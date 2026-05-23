@@ -724,27 +724,50 @@ const Jornada = (() => {
     App.bindMask(document.getElementById("cpf-consulta"), App.maskCPF);
     document.getElementById("btn-back").onclick = async () => await advance(op, "cadastro");
 
+    const submitBtnConsulta = document.querySelector("#form-consulta button[type=submit]");
     document.getElementById("form-consulta").onsubmit = async (e) => {
       e.preventDefault();
       if (!document.getElementById("autorizo").checked) return;
       const cnj = document.getElementById("cnj").value;
       const cpf = document.getElementById("cpf-consulta").value;
-      const advogadoTexto = !adv ? document.getElementById("advogado").value : null;
+      const advogadoTextoEl = document.getElementById("advogado");
+      const advogadoTexto = advogadoTextoEl ? advogadoTextoEl.value : null;
 
-      // Atualiza processo com CNJ
-      if (op.processoId) {
-        await Processos.update(op.processoId, { numeroCnj: cnj });
+      submitBtnConsulta.disabled = true;
+      submitBtnConsulta.textContent = "Iniciando análise…";
+
+      try {
+        // Garante processo (se por algum motivo não existir, cria)
+        let processoId = op.processoId;
+        if (!processoId) {
+          const novo = await Processos.create({ numeroCnj: cnj });
+          processoId = novo.id;
+          await Operacoes.update(op.id, { processoId });
+        } else {
+          await Processos.update(processoId, { numeroCnj: cnj });
+        }
+
+        await Operacoes.update(op.id, {
+          cpfTitular: cpf,
+          advogadoTexto,
+          autorizouConsulta: true,
+          autorizadoEm: new Date().toISOString(),
+          analiseStatus: "processando",
+        });
+
+        const fresh = await Operacoes.get(op.id);
+        await render(fresh);
+      } catch (err) {
+        console.error("Erro ao iniciar análise:", err);
+        // mostra erro visível
+        const errBox = document.createElement("div");
+        errBox.className = "alert alert--danger mt-2";
+        errBox.innerHTML = `<div><strong>Erro ao iniciar análise:</strong> ${err.message || err}<br>
+          Tente de novo. Se persistir, verifica F12 → Console.</div>`;
+        document.getElementById("form-consulta").appendChild(errBox);
+        submitBtnConsulta.disabled = false;
+        submitBtnConsulta.textContent = "Autorizar e iniciar análise →";
       }
-      await Operacoes.update(op.id, {
-        cpfTitular: cpf,
-        advogadoTexto,
-        autorizouConsulta: true,
-        autorizadoEm: new Date().toISOString(),
-        analiseStatus: "processando",
-      });
-      // Reload + render
-      const fresh = await Operacoes.get(op.id);
-      await render(fresh);
     };
   }
 
