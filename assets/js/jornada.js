@@ -441,9 +441,14 @@ const Jornada = (() => {
 
           <form id="form-upload" class="form mt-3">
             <div class="field">
-              <label class="field__label" for="comprovante">Comprovante de protocolação (PDF)</label>
+              <label class="field__label" for="termo-assinado">1) Termo de cessão assinado (PDF)</label>
+              <input id="termo-assinado" type="file" accept=".pdf,.jpg,.jpeg,.png" required>
+              <span class="field__hint">O termo que você baixou no passo anterior, agora com as assinaturas (você + advogado + Just Já).</span>
+            </div>
+            <div class="field">
+              <label class="field__label" for="comprovante">2) Comprovante de protocolação (PDF)</label>
               <input id="comprovante" type="file" accept=".pdf,.jpg,.jpeg,.png" required>
-              <span class="field__hint">Tamanho máximo: 10 MB. Pode ser o PDF do PJe ou um print legível.</span>
+              <span class="field__hint">PDF gerado pelo PJe / e-SAJ / sistema do tribunal após a juntada nos autos.</span>
             </div>
             <div class="field">
               <label class="field__label" for="protocolado-por">Quem protocolou?</label>
@@ -456,54 +461,78 @@ const Jornada = (() => {
               <label class="field__label" for="numero-protocolo">Número do protocolo (opcional)</label>
               <input id="numero-protocolo" placeholder="Se aparecer no comprovante">
             </div>
+            <div class="alert">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+              <div>Tamanho máximo por arquivo: 10 MB. Pode ser o PDF original ou um print legível.</div>
+            </div>
             <div class="journey-actions">
-              <button type="submit" class="btn btn--primary btn--lg">Enviar comprovante →</button>
+              <button type="submit" class="btn btn--primary btn--lg">Enviar documentos →</button>
             </div>
           </form>
         `;
         const submitBtn = document.querySelector("#form-upload button[type=submit]");
         document.getElementById("form-upload").onsubmit = async (e) => {
           e.preventDefault();
-          const file = document.getElementById("comprovante").files[0];
-          if (!file) return;
-          if (file.size > 10 * 1024 * 1024) {
-            alert("Arquivo muito grande (máximo 10 MB).");
-            return;
+          const termoFile       = document.getElementById("termo-assinado").files[0];
+          const comprovanteFile = document.getElementById("comprovante").files[0];
+          if (!termoFile || !comprovanteFile) return;
+
+          for (const f of [termoFile, comprovanteFile]) {
+            if (f.size > 10 * 1024 * 1024) {
+              alert(`Arquivo "${f.name}" maior que 10 MB.`);
+              return;
+            }
           }
 
           submitBtn.disabled = true;
           submitBtn.textContent = "Enviando…";
 
-          try {
-            // Upload pro bucket "comprovantes"
-            // Path: <user_id>/<processo_id>/<timestamp>-<nome-do-arquivo>
+          // Helper que sobe um arquivo e devolve { path, url }
+          async function uploadOne(prefix, file) {
             const userId = Auth.currentUser().id;
             const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-            const path = `${userId}/${proc.id}/${Date.now()}-${safeName}`;
-
+            const path = `${userId}/${proc.id}/${prefix}-${Date.now()}-${safeName}`;
             const { error: upErr } = await Auth.client()
-              .storage
-              .from("comprovantes")
+              .storage.from("comprovantes")
               .upload(path, file, {
                 cacheControl: "3600",
                 upsert: false,
                 contentType: file.type || "application/octet-stream",
               });
             if (upErr) throw upErr;
-
-            // Gera signed URL válida por 1 ano (bucket é privado)
             const { data: signed, error: signErr } = await Auth.client()
-              .storage
-              .from("comprovantes")
+              .storage.from("comprovantes")
               .createSignedUrl(path, 60 * 60 * 24 * 365);
             if (signErr) throw signErr;
+            return {
+              nome: file.name,
+              tamanho: file.size,
+              path,
+              url: signed.signedUrl,
+            };
+          }
+
+          try {
+            const [termo, comprovante] = await Promise.all([
+              uploadOne("termo-assinado", termoFile),
+              uploadOne("comprovante", comprovanteFile),
+            ]);
 
             proc.protocolacao = {
               comprovanteEnviado: true,
-              comprovanteNome: file.name,
-              comprovanteTamanho: file.size,
-              comprovantePath: path,
-              comprovanteUrl: signed.signedUrl,
+
+              // Termo assinado
+              termoAssinadoNome: termo.nome,
+              termoAssinadoTamanho: termo.tamanho,
+              termoAssinadoPath: termo.path,
+              termoAssinadoUrl: termo.url,
+
+              // Comprovante de protocolação
+              comprovanteNome: comprovante.nome,
+              comprovanteTamanho: comprovante.tamanho,
+              comprovantePath: comprovante.path,
+              comprovanteUrl: comprovante.url,
+
               protocoladoPor: document.getElementById("protocolado-por").value,
               numeroProtocolo: document.getElementById("numero-protocolo").value,
               enviadoEm: new Date().toISOString(),
@@ -517,7 +546,7 @@ const Jornada = (() => {
             console.error("Upload falhou:", err);
             alert("Falha no upload: " + (err.message || err));
             submitBtn.disabled = false;
-            submitBtn.textContent = "Enviar comprovante →";
+            submitBtn.textContent = "Enviar documentos →";
           }
         };
       } else {
@@ -527,10 +556,14 @@ const Jornada = (() => {
           <p class="muted">Tudo certo. Vamos validar e liberar o seu pagamento.</p>
 
           <div class="card mt-3" style="background: linear-gradient(135deg, var(--success-100), #fff); border-color: #86efac;">
-            <h3>Status do seu pedido</h3>
+            <h3>Documentos recebidos em ${App.fmtDate(p.enviadoEm)}</h3>
             <ul style="font-size:.95rem;">
-              <li>✅ <strong>Comprovante recebido</strong> em ${App.fmtDate(p.enviadoEm)} — arquivo: <code>${p.comprovanteNome}</code>${p.comprovanteUrl ? ` (<a href="${p.comprovanteUrl}" target="_blank" rel="noopener">ver arquivo</a>)` : ""}</li>
-              <li>🔄 <strong>Análise do comprovante:</strong> em até <strong>${p.prazoAnaliseHoras} horas</strong></li>
+              <li>📄 <strong>Termo de cessão assinado:</strong> <code>${p.termoAssinadoNome || "—"}</code>${p.termoAssinadoUrl ? ` — <a href="${p.termoAssinadoUrl}" target="_blank" rel="noopener">ver arquivo</a>` : ""}</li>
+              <li>📑 <strong>Comprovante de protocolação:</strong> <code>${p.comprovanteNome || "—"}</code>${p.comprovanteUrl ? ` — <a href="${p.comprovanteUrl}" target="_blank" rel="noopener">ver arquivo</a>` : ""}</li>
+            </ul>
+            <hr style="border:0; border-top:1px solid rgba(0,0,0,.08); margin: 14px 0;">
+            <ul style="font-size:.95rem;">
+              <li>🔄 <strong>Análise dos documentos:</strong> em até <strong>${p.prazoAnaliseHoras} horas</strong></li>
               <li>💰 <strong>Liberação do pagamento:</strong> em até <strong>${p.prazoPagamentoHoras} horas</strong> após validação</li>
             </ul>
           </div>
