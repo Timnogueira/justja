@@ -100,6 +100,7 @@ create table public.operacoes (
   descricao           text,
   valor_estimado      numeric,              -- valor a antecipar (causa total para cliente; honorários para advogado)
   advogado_texto      text,                 -- nome do advogado quando ainda não é pessoa cadastrada
+  cpf_titular         text,                 -- CPF do titular do processo (informado na etapa de análise)
 
   -- controle de análise
   analise_status      text,
