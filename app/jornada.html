@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jornada — Just Já</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/css/styles.css">
+  <script src="../assets/js/config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div class="demo-banner"><strong>Versão demo:</strong> dados ficam no seu navegador (localStorage).</div>
+
+<header class="nav">
+  <div class="container nav__inner">
+    <a href="../index.html" class="nav__brand">
+      <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <path d="M16 2L4 8v9c0 6.6 5.4 12 12 13 6.6-1 12-6.4 12-13V8L16 2z" fill="#0f3d5e"/>
+        <path d="M11 16l3.5 3.5L22 12" stroke="#f59e0b" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+      Just Já
+    </a>
+    <div class="nav__cta">
+      <a href="dashboard.html" class="btn btn--ghost">Painel</a>
+    </div>
+  </div>
+</header>
+
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar__user">
+      <div class="sidebar__user-name" id="u-name">—</div>
+      <div class="sidebar__user-email" id="u-email">—</div>
+    </div>
+    <nav class="sidebar__nav">
+      <a href="dashboard.html">📊 Painel</a>
+      <a href="novo-processo.html">➕ Novo processo</a>
+      <a href="../index.html#contato">💬 Suporte</a>
+    </nav>
+    <button class="btn btn--ghost btn--block sidebar__logout" id="btn-logout">Sair</button>
+  </aside>
+
+  <main class="app-main">
+    <div class="app-header">
+      <div>
+        <h1 id="proc-titulo">Jornada</h1>
+        <p class="muted" id="proc-sub">Acompanhe cada etapa da sua antecipação.</p>
+      </div>
+      <a href="dashboard.html" class="btn btn--ghost">← Voltar</a>
+    </div>
+
+    <div id="journey-stepper" class="stepper"></div>
+    <div id="journey-content" class="journey-stage"></div>
+
+    <div id="not-found" class="empty hide" style="margin-top: 24px;">
+      <h3>Processo não encontrado</h3>
+      <p>O processo que você está tentando abrir não existe ou foi removido.</p>
+      <a href="dashboard.html" class="btn btn--primary mt-2">Voltar ao painel</a>
+    </div>
+  </main>
+</div>
+
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/simulador.js"></script>
+<script src="../assets/js/jornada.js"></script>
+<script src="../assets/js/chat.js"></script>
+<script>
+(async () => {
+  const user = await Auth.requireAuth("../login.html");
+  if (!user) return;
+
+  document.getElementById("u-name").textContent = user.nome;
+  document.getElementById("u-email").textContent = user.email;
+  document.getElementById("btn-logout").onclick = () => Auth.logout("../login.html");
+
+  const proc = Jornada.loadProcesso();
+  if (!proc) {
+    document.getElementById("journey-stepper").classList.add("hide");
+    document.getElementById("journey-content").classList.add("hide");
+    document.getElementById("not-found").classList.remove("hide");
+  } else {
+    document.getElementById("proc-titulo").textContent = proc.titulo || ("Processo " + proc.id.slice(-4));
+    document.getElementById("proc-sub").textContent = proc.numeroCnj
+      ? `Processo: ${proc.numeroCnj}`
+      : "Acompanhe cada etapa da sua antecipação.";
+    Jornada.render(proc);
+  }
+})();
+</script>
+
+</body>
+</html>

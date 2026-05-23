@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Painel — Just Já</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/css/styles.css">
+  <script src="../assets/js/config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div class="demo-banner">
+  <strong>Versão demo:</strong> dados ficam apenas no seu navegador (localStorage).
+</div>
+
+<header class="nav">
+  <div class="container nav__inner">
+    <a href="../index.html" class="nav__brand">
+      <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <path d="M16 2L4 8v9c0 6.6 5.4 12 12 13 6.6-1 12-6.4 12-13V8L16 2z" fill="#0f3d5e"/>
+        <path d="M11 16l3.5 3.5L22 12" stroke="#f59e0b" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+      Just Já
+    </a>
+    <div class="nav__cta">
+      <button class="btn btn--ghost" id="btn-logout">Sair</button>
+    </div>
+  </div>
+</header>
+
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar__user">
+      <div class="sidebar__user-name" id="u-name">—</div>
+      <div class="sidebar__user-email" id="u-email">—</div>
+    </div>
+    <nav class="sidebar__nav">
+      <a href="dashboard.html" class="active">📊 Painel</a>
+      <a href="novo-processo.html">➕ Novo processo</a>
+      <a href="../index.html#contato">💬 Suporte</a>
+    </nav>
+    <button class="btn btn--ghost btn--block sidebar__logout" id="btn-logout-2">Sair</button>
+  </aside>
+
+  <main class="app-main">
+    <div class="app-header">
+      <div>
+        <h1>Olá, <span id="welcome-name">—</span> 👋</h1>
+        <p class="muted">Acompanhe seus processos e propostas em andamento.</p>
+      </div>
+      <a href="novo-processo.html" class="btn btn--primary btn--lg">+ Novo processo</a>
+    </div>
+
+    <!-- KPIs -->
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div class="kpi__label">Processos cadastrados</div>
+        <div class="kpi__value" id="kpi-total">0</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi__label">Em análise</div>
+        <div class="kpi__value" id="kpi-analise">0</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi__label">Com proposta</div>
+        <div class="kpi__value" id="kpi-oferta">0</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi__label">Já recebido</div>
+        <div class="kpi__value" id="kpi-recebido">R$ 0</div>
+      </div>
+    </div>
+
+    <h2 style="margin-top: 40px; font-size: 1.3rem;">Meus processos</h2>
+
+    <div id="lista-container">
+      <!-- preenchido por JS -->
+    </div>
+  </main>
+</div>
+
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/simulador.js"></script>
+<script src="../assets/js/jornada.js"></script>
+<script src="../assets/js/chat.js"></script>
+<script>
+(async () => {
+  const user = await Auth.requireAuth("../login.html");
+  if (!user) return;
+
+  document.getElementById("u-name").textContent  = user.nome;
+  document.getElementById("u-email").textContent = user.email;
+  document.getElementById("welcome-name").textContent = user.nome.split(" ")[0];
+
+  document.getElementById("btn-logout").onclick  = () => Auth.logout("../login.html");
+  document.getElementById("btn-logout-2").onclick = () => Auth.logout("../login.html");
+
+  const STAGE_LABEL = {
+    cadastro:        { label: "Cadastro",          badge: "badge" },
+    consultaAnalise: { label: "Em análise",        badge: "badge--warn" },
+    oferta:          { label: "Proposta pronta",   badge: "badge--warn" },
+    assinatura:      { label: "Assinando",         badge: "badge--brand" },
+    protocolacao:    { label: "Protocolando",      badge: "badge--brand" },
+    pagamento:       { label: "Pagamento",         badge: "badge--success" },
+    recusada:        { label: "Recusada",          badge: "badge--danger" },
+  };
+
+  function render() {
+    const procs = App.getProcessos(user.email);
+    document.getElementById("kpi-total").textContent = procs.length;
+    document.getElementById("kpi-analise").textContent = procs.filter(p => p.estagio === "consultaAnalise").length;
+    document.getElementById("kpi-oferta").textContent  = procs.filter(p => p.estagio === "oferta").length;
+    const recebido = procs
+      .filter(p => p.pagamentoStatus === "pago")
+      .reduce((s, p) => s + (p.oferta?.valorAntecipadoFinal || p.oferta?.valorAntecipadoIntegral || 0), 0);
+    document.getElementById("kpi-recebido").textContent = App.fmtBRL(recebido);
+
+    const c = document.getElementById("lista-container");
+    if (!procs.length) {
+      c.innerHTML = `
+        <div class="empty">
+          <h3>Você ainda não tem nenhum processo</h3>
+          <p>Que tal começar agora? Leva 5 minutos para uma primeira proposta.</p>
+          <a href="novo-processo.html" class="btn btn--primary mt-2">Cadastrar meu primeiro processo</a>
+        </div>`;
+      return;
+    }
+
+    c.innerHTML = `
+      <div class="table">
+        <table>
+          <thead>
+            <tr>
+              <th>Processo</th>
+              <th>Tipo</th>
+              <th>Valor estimado</th>
+              <th>Status</th>
+              <th>Última atualização</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${procs.map(p => {
+              const meta = STAGE_LABEL[p.estagio] || STAGE_LABEL.cadastro;
+              const tipo = Simulador.TIPOS[p.tipo]?.label || "—";
+              return `
+                <tr>
+                  <td>
+                    <div style="font-weight:600;">${p.titulo || (p.numeroCnj || "Processo " + p.id.slice(-4))}</div>
+                    <div class="muted" style="font-size:.85rem;">${p.numeroCnj || "número pendente"}</div>
+                  </td>
+                  <td>${tipo}</td>
+                  <td><strong>${App.fmtBRL(p.valorEstimado || 0)}</strong></td>
+                  <td><span class="badge ${meta.badge}">${meta.label}</span></td>
+                  <td>${App.fmtDate(p.updatedAt)}</td>
+                  <td><a class="btn btn--ghost" href="jornada.html?id=${p.id}">Abrir</a></td>
+                </tr>
+              `;
+            }).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  render();
+})();
+</script>
+
+</body>
+</html>

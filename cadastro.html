@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Criar conta — Just Já</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <script src="assets/js/config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div class="demo-banner">
+  <strong>Versão demo:</strong> autenticação client-side. Em produção, usar Supabase Auth + RLS.
+</div>
+
+<header class="nav">
+  <div class="container nav__inner">
+    <a href="index.html" class="nav__brand">
+      <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <path d="M16 2L4 8v9c0 6.6 5.4 12 12 13 6.6-1 12-6.4 12-13V8L16 2z" fill="#0f3d5e"/>
+        <path d="M11 16l3.5 3.5L22 12" stroke="#f59e0b" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+      Just Já
+    </a>
+    <div class="nav__cta">
+      <a href="login.html" class="btn btn--ghost">Entrar</a>
+    </div>
+  </div>
+</header>
+
+<main class="auth">
+  <div class="auth__card" style="max-width: 520px;">
+    <h1>Criar minha conta</h1>
+    <p class="lead">Leva 1 minuto. Sem cobrança e sem compromisso — você decide se vai adiante.</p>
+
+    <form class="form mt-3" id="signup-form" novalidate>
+      <div class="field">
+        <label class="field__label" for="nome">Nome completo</label>
+        <input id="nome" autocomplete="name" required>
+        <span class="field__error"></span>
+      </div>
+      <div class="field--row">
+        <div class="field">
+          <label class="field__label" for="cpf">CPF</label>
+          <input id="cpf" inputmode="numeric" placeholder="000.000.000-00" autocomplete="off" required>
+          <span class="field__error"></span>
+        </div>
+        <div class="field">
+          <label class="field__label" for="tel">Telefone</label>
+          <input id="tel" inputmode="tel" placeholder="(00) 00000-0000" autocomplete="tel">
+        </div>
+      </div>
+      <div class="field">
+        <label class="field__label" for="email">E-mail</label>
+        <input id="email" type="email" autocomplete="email" required>
+        <span class="field__error"></span>
+      </div>
+      <div class="field">
+        <label class="field__label" for="senha">Crie uma senha</label>
+        <input id="senha" type="password" autocomplete="new-password" required>
+        <span class="field__hint">Mínimo 8 caracteres. Use letras e números para mais segurança.</span>
+        <span class="field__error"></span>
+      </div>
+      <label class="checkbox">
+        <input type="checkbox" id="termos" required>
+        <span>Li e concordo com os <a href="#">Termos de Uso</a> e a <a href="#">Política de Privacidade</a>.</span>
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" id="lgpd" required>
+        <span>Autorizo a Just Já a tratar meus dados pessoais conforme a LGPD, exclusivamente para a operação de antecipação de processos.</span>
+      </label>
+
+      <div id="signup-error" class="alert alert--danger hide"></div>
+      <button type="submit" class="btn btn--primary btn--block btn--lg">Criar conta</button>
+    </form>
+
+    <div class="auth__footer">
+      Já tem conta? <a href="login.html"><strong>Entrar</strong></a>
+    </div>
+  </div>
+</main>
+
+<script src="assets/js/app.js"></script>
+<script src="assets/js/auth.js"></script>
+<script src="assets/js/chat.js"></script>
+<script>
+  (async () => {
+    await Auth.init();
+    if (Auth.currentUser()) {
+      window.location.href = "app/dashboard.html";
+      return;
+    }
+
+    App.bindMask(document.getElementById("cpf"), App.maskCPF);
+    App.bindMask(document.getElementById("tel"), App.maskPhone);
+
+    const form = document.getElementById("signup-form");
+    const errBox = document.getElementById("signup-error");
+    const submitBtn = form.querySelector("button[type=submit]");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      errBox.classList.add("hide");
+
+      const nome  = document.getElementById("nome");
+      const cpf   = document.getElementById("cpf");
+      const tel   = document.getElementById("tel");
+      const email = document.getElementById("email");
+      const senha = document.getElementById("senha");
+      const termos = document.getElementById("termos");
+      const lgpd   = document.getElementById("lgpd");
+
+      [nome, cpf, email, senha].forEach(i => App.setFieldError(i, ""));
+
+      let ok = true;
+      if (!nome.value.trim() || nome.value.trim().split(" ").length < 2) {
+        App.setFieldError(nome, "Informe seu nome completo."); ok = false;
+      }
+      if (!App.isValidCPF(cpf.value)) {
+        App.setFieldError(cpf, "CPF inválido."); ok = false;
+      }
+      if (!App.isValidEmail(email.value)) {
+        App.setFieldError(email, "Informe um e-mail válido."); ok = false;
+      }
+      if (senha.value.length < 8) {
+        App.setFieldError(senha, "Mínimo de 8 caracteres."); ok = false;
+      }
+      if (!termos.checked || !lgpd.checked) ok = false;
+      if (!ok) return;
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Criando conta…";
+      try {
+        const result = await Auth.signup({
+          nome: nome.value,
+          email: email.value,
+          cpf: cpf.value,
+          telefone: tel.value,
+          senha: senha.value,
+        });
+        if (result.needsEmailConfirmation) {
+          form.innerHTML = `
+            <div class="alert alert--success">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              <div>
+                <strong>Confira sua caixa de entrada.</strong><br>
+                Mandamos um e-mail de confirmação para <strong>${email.value}</strong>.
+                Clique no link da mensagem para ativar sua conta e poder entrar.
+              </div>
+            </div>
+            <a href="login.html" class="btn btn--ghost btn--block mt-2">Ir para o login</a>
+          `;
+        } else {
+          window.location.href = "app/dashboard.html";
+        }
+      } catch (err) {
+        errBox.textContent = err.message;
+        errBox.classList.remove("hide");
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Criar conta";
+      }
+    });
+  })();
+</script>
+
+</body>
+</html>

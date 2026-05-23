@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Novo processo — Just Já</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/css/styles.css">
+  <script src="../assets/js/config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div class="demo-banner"><strong>Versão demo:</strong> dados ficam no seu navegador (localStorage).</div>
+
+<main class="auth">
+  <div class="auth__card" style="text-align:center;">
+    <div class="spinner"></div>
+    <h2>Iniciando novo processo…</h2>
+    <p class="muted">Te levando para a primeira etapa.</p>
+  </div>
+</main>
+
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/chat.js"></script>
+<script>
+(async () => {
+  const user = await Auth.requireAuth("../login.html");
+  if (!user) return;
+
+  // Cria um processo vazio no estágio "cadastro" e redireciona para a jornada.
+  const proc = {
+    id: App.newId(),
+    titulo: "",
+    tipo: "consumidor",       // default
+    valorEstimado: null,
+    tribunal: "",
+    descricao: "",
+    estagio: "cadastro",
+    status: "ativo",
+    historico: [{ estagio: "cadastro", at: new Date().toISOString() }],
+  };
+  App.upsertProcesso(user.email, proc);
+  window.location.href = `jornada.html?id=${proc.id}&stage=cadastro`;
+})();
+</script>
+
+</body>
+</html>
