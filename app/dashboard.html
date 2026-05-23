@@ -13,9 +13,7 @@
 </head>
 <body>
 
-<div class="demo-banner">
-  <strong>Versão demo:</strong> dados ficam apenas no seu navegador (localStorage).
-</div>
+<div class="demo-banner"><strong>Versão demo:</strong> dados ficam apenas no seu navegador (localStorage).</div>
 
 <header class="nav">
   <div class="container nav__inner">
@@ -37,10 +35,11 @@
     <div class="sidebar__user">
       <div class="sidebar__user-name" id="u-name">—</div>
       <div class="sidebar__user-email" id="u-email">—</div>
+      <div id="u-role-badge" style="margin-top:6px;"></div>
     </div>
     <nav class="sidebar__nav">
       <a href="dashboard.html" class="active">📊 Painel</a>
-      <a href="novo-processo.html">➕ Novo processo</a>
+      <a href="novo-processo.html" id="link-novo">➕ Nova antecipação</a>
       <a href="../index.html#contato">💬 Suporte</a>
     </nav>
     <button class="btn btn--ghost btn--block sidebar__logout" id="btn-logout-2">Sair</button>
@@ -50,15 +49,14 @@
     <div class="app-header">
       <div>
         <h1>Olá, <span id="welcome-name">—</span> 👋</h1>
-        <p class="muted">Acompanhe seus processos e propostas em andamento.</p>
+        <p class="muted" id="welcome-sub">Acompanhe suas antecipações em andamento.</p>
       </div>
-      <a href="novo-processo.html" class="btn btn--primary btn--lg">+ Novo processo</a>
+      <a href="novo-processo.html" class="btn btn--primary btn--lg" id="cta-novo">+ Nova antecipação</a>
     </div>
 
-    <!-- KPIs -->
     <div class="kpi-grid">
       <div class="kpi">
-        <div class="kpi__label">Processos cadastrados</div>
+        <div class="kpi__label">Antecipações</div>
         <div class="kpi__value" id="kpi-total">0</div>
       </div>
       <div class="kpi">
@@ -75,100 +73,114 @@
       </div>
     </div>
 
-    <h2 style="margin-top: 40px; font-size: 1.3rem;">Meus processos</h2>
-
-    <div id="lista-container">
-      <!-- preenchido por JS -->
-    </div>
+    <h2 style="margin-top: 40px; font-size: 1.3rem;" id="lista-titulo">Minhas antecipações</h2>
+    <div id="lista-container"></div>
   </main>
 </div>
 
 <script src="../assets/js/app.js"></script>
 <script src="../assets/js/auth.js"></script>
-<script src="../assets/js/simulador.js"></script>
-<script src="../assets/js/jornada.js"></script>
 <script src="../assets/js/chat.js"></script>
 <script>
 (async () => {
   const user = await Auth.requireAuth("../login.html");
   if (!user) return;
+  const pessoa = await Pessoas.getCurrent();
 
   document.getElementById("u-name").textContent  = user.nome;
   document.getElementById("u-email").textContent = user.email;
   document.getElementById("welcome-name").textContent = user.nome.split(" ")[0];
-
   document.getElementById("btn-logout").onclick  = () => Auth.logout("../login.html");
   document.getElementById("btn-logout-2").onclick = () => Auth.logout("../login.html");
 
-  const STAGE_LABEL = {
-    cadastro:        { label: "Cadastro",          badge: "badge" },
-    consultaAnalise: { label: "Em análise",        badge: "badge--warn" },
-    oferta:          { label: "Proposta pronta",   badge: "badge--warn" },
-    assinatura:      { label: "Assinando",         badge: "badge--brand" },
-    protocolacao:    { label: "Protocolando",      badge: "badge--brand" },
-    pagamento:       { label: "Pagamento",         badge: "badge--success" },
-    recusada:        { label: "Recusada",          badge: "badge--danger" },
-  };
+  // Badge de role
+  const role = pessoa?.role || "cliente";
+  const isAdv = role === "advogado";
+  const badgeEl = document.getElementById("u-role-badge");
+  badgeEl.innerHTML = `<span class="badge ${isAdv ? "badge--brand" : "badge--success"}">${isAdv ? "⚖️ Advogado(a)" : "👤 Cliente"}</span>`;
 
-  async function render() {
-    const procs = await App.getProcessos();
-    document.getElementById("kpi-total").textContent = procs.length;
-    document.getElementById("kpi-analise").textContent = procs.filter(p => p.estagio === "consultaAnalise").length;
-    document.getElementById("kpi-oferta").textContent  = procs.filter(p => p.estagio === "oferta").length;
-    const recebido = procs
-      .filter(p => p.pagamentoStatus === "pago")
-      .reduce((s, p) => s + (p.oferta?.valorAntecipadoFinal || p.oferta?.valorAntecipadoIntegral || 0), 0);
-    document.getElementById("kpi-recebido").textContent = App.fmtBRL(recebido);
-
-    const c = document.getElementById("lista-container");
-    if (!procs.length) {
-      c.innerHTML = `
-        <div class="empty">
-          <h3>Você ainda não tem nenhum processo</h3>
-          <p>Que tal começar agora? Leva 5 minutos para uma primeira proposta.</p>
-          <a href="novo-processo.html" class="btn btn--primary mt-2">Cadastrar meu primeiro processo</a>
-        </div>`;
-      return;
-    }
-
-    c.innerHTML = `
-      <div class="table">
-        <table>
-          <thead>
-            <tr>
-              <th>Processo</th>
-              <th>Tipo</th>
-              <th>Valor estimado</th>
-              <th>Status</th>
-              <th>Última atualização</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            ${procs.map(p => {
-              const meta = STAGE_LABEL[p.estagio] || STAGE_LABEL.cadastro;
-              const tipo = Simulador.TIPOS[p.tipo]?.label || "—";
-              return `
-                <tr>
-                  <td>
-                    <div style="font-weight:600;">${p.titulo || (p.numeroCnj || "Processo " + p.id.slice(-4))}</div>
-                    <div class="muted" style="font-size:.85rem;">${p.numeroCnj || "número pendente"}</div>
-                  </td>
-                  <td>${tipo}</td>
-                  <td><strong>${App.fmtBRL(p.valorEstimado || 0)}</strong></td>
-                  <td><span class="badge ${meta.badge}">${meta.label}</span></td>
-                  <td>${App.fmtDate(p.updatedAt)}</td>
-                  <td><a class="btn btn--ghost" href="jornada.html?id=${p.id}">Abrir</a></td>
-                </tr>
-              `;
-            }).join("")}
-          </tbody>
-        </table>
-      </div>
-    `;
+  if (isAdv) {
+    document.getElementById("welcome-sub").textContent = "Antecipe seus honorários ou ofereça antecipação para seus clientes.";
+    document.getElementById("cta-novo").textContent = "+ Antecipar honorários";
+    document.getElementById("link-novo").textContent = "➕ Antecipar honorários";
+    document.getElementById("lista-titulo").textContent = "Minhas operações";
   }
 
-  await render();
+  const STAGE_LABEL = {
+    cadastro:        { label: "Cadastro",         badge: "badge" },
+    consultaAnalise: { label: "Em análise",       badge: "badge--warn" },
+    oferta:          { label: "Proposta pronta",  badge: "badge--warn" },
+    assinatura:      { label: "Assinando",        badge: "badge--brand" },
+    protocolacao:    { label: "Protocolando",     badge: "badge--brand" },
+    pagamento:       { label: "Pagamento",        badge: "badge--success" },
+    recusada:        { label: "Recusada",         badge: "badge--danger" },
+  };
+  const TIPO_LABEL = {
+    aereo: "Direito Aéreo",
+    consumidor: "Consumidor",
+    bancario: "Bancário",
+    outras: "Outras relações de consumo",
+  };
+
+  const ops = await Operacoes.list();
+
+  document.getElementById("kpi-total").textContent = ops.length;
+  document.getElementById("kpi-analise").textContent = ops.filter(o => o.estagio === "consultaAnalise").length;
+  document.getElementById("kpi-oferta").textContent  = ops.filter(o => o.estagio === "oferta").length;
+
+  // Soma valor antecipado dos pagos. Pra evitar query a ofertas por operação aqui,
+  // mostramos o valor estimado para os pagos (placeholder simples).
+  const recebido = ops
+    .filter(o => o.pagamentoStatus === "pago")
+    .reduce((s, o) => s + (o.pagamento?.valor || 0), 0);
+  document.getElementById("kpi-recebido").textContent = App.fmtBRL(recebido);
+
+  const container = document.getElementById("lista-container");
+  if (!ops.length) {
+    container.innerHTML = `
+      <div class="empty">
+        <h3>Você ainda não tem nenhuma antecipação</h3>
+        <p>Que tal começar agora? Leva 5 minutos para uma primeira proposta.</p>
+        <a href="novo-processo.html" class="btn btn--primary mt-2">${isAdv ? "Antecipar meus honorários" : "Cadastrar meu primeiro processo"}</a>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="table">
+      <table>
+        <thead>
+          <tr>
+            <th>Apelido</th>
+            <th>Tipo</th>
+            <th>Valor estimado</th>
+            <th>Status</th>
+            <th>Última atualização</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${ops.map(o => {
+            const meta = STAGE_LABEL[o.estagio] || STAGE_LABEL.cadastro;
+            const tipo = TIPO_LABEL[o.processos?.tipo] || "—";
+            return `
+              <tr>
+                <td>
+                  <div style="font-weight:600;">${o.apelido || ("Operação " + o.id.slice(-4))}</div>
+                  <div class="muted" style="font-size:.85rem;">${o.processos?.numeroCnj || "número pendente"}</div>
+                </td>
+                <td>${tipo}</td>
+                <td><strong>${App.fmtBRL(o.valorEstimado || 0)}</strong></td>
+                <td><span class="badge ${meta.badge}">${meta.label}</span></td>
+                <td>${App.fmtDate(o.updatedAt)}</td>
+                <td><a class="btn btn--ghost" href="jornada.html?id=${o.id}">Abrir</a></td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
 })();
 </script>
 

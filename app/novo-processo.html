@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Novo processo — Just Já</title>
+  <title>Nova antecipação — Just Já</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -13,50 +13,57 @@
 </head>
 <body>
 
-<div class="demo-banner"><strong>Versão demo:</strong> dados ficam no seu navegador (localStorage).</div>
+<div class="demo-banner"><strong>Versão demo:</strong> validação interna.</div>
 
 <main class="auth">
   <div class="auth__card" style="text-align:center;">
     <div class="spinner"></div>
-    <h2>Iniciando novo processo…</h2>
+    <h2 id="status-titulo">Iniciando nova antecipação…</h2>
     <p class="muted">Te levando para a primeira etapa.</p>
+    <div id="error-box" class="alert alert--danger hide mt-2"></div>
   </div>
 </main>
 
 <script src="../assets/js/app.js"></script>
 <script src="../assets/js/auth.js"></script>
-<script src="../assets/js/chat.js"></script>
 <script>
 (async () => {
   const user = await Auth.requireAuth("../login.html");
   if (!user) return;
 
-  // Cria um processo vazio no estágio "cadastro" e redireciona para a jornada.
-  const proc = {
-    id: App.newId(),
-    titulo: "",
-    tipo: "consumidor",       // default
-    valorEstimado: null,
-    tribunal: "",
-    descricao: "",
-    estagio: "cadastro",
-    status: "ativo",
-    historico: [{ estagio: "cadastro", at: new Date().toISOString() }],
-  };
   try {
-    const saved = await App.upsertProcesso(proc);
-    window.location.href = `jornada.html?id=${saved.id}&stage=cadastro`;
+    const pessoa = await Pessoas.getCurrent();
+    if (!pessoa) throw new Error("Pessoa não encontrada para esse usuário. Refaça o login.");
+
+    const isAdv = pessoa.role === "advogado";
+
+    // 1) Cria processo vazio (será preenchido na etapa Cadastro)
+    const processo = await Processos.create({ tipo: "consumidor" });
+
+    // 2) Cria operação ligada
+    const operacao = await Operacoes.create({
+      processoId: processo.id,
+      tipoSolicitante: isAdv ? "advogado" : "cliente",
+      escopo: isAdv ? "so_honorarios" : "integral",
+      estagio: "cadastro",
+      apelido: "",
+    });
+
+    // 3) Redireciona pra jornada
+    window.location.href = `jornada.html?id=${operacao.id}&stage=cadastro`;
   } catch (err) {
     console.error(err);
-    document.querySelector(".auth__card").innerHTML = `
-      <div class="alert alert--danger">
-        <div>
-          <strong>Erro ao iniciar processo:</strong> ${err.message || err}<br><br>
-          Verifique se a tabela <code>processos</code> foi criada no Supabase (rode o SQL em <code>supabase-schema.sql</code>).
-        </div>
+    document.getElementById("status-titulo").textContent = "Não consegui iniciar agora";
+    const eb = document.getElementById("error-box");
+    eb.classList.remove("hide");
+    eb.innerHTML = `
+      <div>
+        <strong>Erro:</strong> ${err.message || err}<br><br>
+        Verifique se as tabelas <code>pessoas</code>, <code>processos</code> e <code>operacoes</code>
+        foram criadas no Supabase (rode <code>supabase-schema.sql</code>).
       </div>
-      <a href="dashboard.html" class="btn btn--ghost btn--block mt-2">Voltar ao painel</a>
     `;
+    document.querySelector(".spinner")?.remove();
   }
 })();
 </script>

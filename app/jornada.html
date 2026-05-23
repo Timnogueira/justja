@@ -80,17 +80,17 @@
   document.getElementById("u-email").textContent = user.email;
   document.getElementById("btn-logout").onclick = () => Auth.logout("../login.html");
 
-  const proc = await Jornada.loadProcesso();
-  if (!proc) {
+  const op = await Jornada.loadOperacao();
+  if (!op) {
     document.getElementById("journey-stepper").classList.add("hide");
     document.getElementById("journey-content").classList.add("hide");
     document.getElementById("not-found").classList.remove("hide");
   } else {
-    document.getElementById("proc-titulo").textContent = proc.titulo || ("Processo " + proc.id.slice(-4));
-    document.getElementById("proc-sub").textContent = proc.numeroCnj
-      ? `Processo: ${proc.numeroCnj}`
+    document.getElementById("proc-titulo").textContent = op.apelido || ("Operação " + op.id.slice(-4));
+    document.getElementById("proc-sub").textContent = op.processos?.numeroCnj
+      ? `Processo: ${op.processos.numeroCnj}`
       : "Acompanhe cada etapa da sua antecipação.";
-    Jornada.render(proc);
+    await Jornada.render(op);
   }
 })();
 </script>

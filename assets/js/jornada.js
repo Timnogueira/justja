@@ -1,13 +1,25 @@
 /* ==========================================================================
-   Just Já — Jornada de antecipação (6 estágios)
+   Just Já — Jornada de antecipação
    --------------------------------------------------------------------------
-   Estágios visíveis no stepper:
-     1. cadastro         — apelido, tipo (cível), tribunal, valor declarado
-     2. consultaAnalise  — autorização + CNJ + análise (síncrona ou assíncrona)
-     3. oferta           — proposta + escolha integral × parte do cliente
-     4. assinatura       — contrato de cessão + termo de cessão
-     5. protocolacao     — upload do comprovante feito pelo cliente/advogado
-     6. pagamento        — status do PIX (no "carrinho")
+   Cobre as duas variações de jornada:
+     - CLIENTE (autor do processo): antecipa o valor da causa.
+     - ADVOGADO: antecipa seus honorários (escopo='so_honorarios').
+                 (Modo "integral conjunto com o cliente" virá depois.)
+
+   Estágios:
+     1. cadastro         — dados básicos do processo
+     2. consultaAnalise  — autorização + CNJ + análise
+     3. oferta           — proposta + escolha (quando cliente)
+     4. assinatura       — contrato + termo
+     5. protocolacao     — upload de termo assinado + comprovante
+     6. pagamento        — status PIX
+
+   Persistência:
+     - Estado da operação → Operacoes.update / advance
+     - Dados do processo (CNJ, tipo, tribunal) → Processos.update
+     - Ofertas geradas pela análise → Ofertas.create
+     - Aceite → Ofertas.aceitar
+     - Assinatura → Assinaturas.create
    ========================================================================== */
 
 const Jornada = (() => {
@@ -20,7 +32,6 @@ const Jornada = (() => {
     { id: "pagamento",       label: "Pagamento" },
   ];
 
-  // Lista placeholder de tribunais — começa por JEC e dá opção "Outros".
   const TRIBUNAIS = [
     "JEC SP — Foro Central (1º andar)",
     "JEC SP — Foro Regional Santo Amaro",
@@ -36,9 +47,9 @@ const Jornada = (() => {
     "JEC CE — Fortaleza (Sede)",
   ];
 
-  // Honorários padrão estimados (substituído pela análise real em produção)
   const HONORARIOS_PCT_PADRAO = 0.30;
 
+  // ---------- Helpers ----------
   function idxOf(stage) {
     return ESTAGIOS.findIndex(e => e.id === stage);
   }
@@ -47,83 +58,88 @@ const Jornada = (() => {
     const cur = idxOf(currentStage);
     target.innerHTML = ESTAGIOS.map((e, i) => {
       const cls = i < cur ? "done" : i === cur ? "current" : "";
-      return `
-        <div class="stepper__item ${cls}">
-          <div class="stepper__num">${i < cur ? "✓" : i + 1}</div>
-          <div>${e.label}</div>
-        </div>`;
+      return `<div class="stepper__item ${cls}">
+        <div class="stepper__num">${i < cur ? "✓" : i + 1}</div>
+        <div>${e.label}</div>
+      </div>`;
     }).join("");
   }
 
-  function getQueryProcId() {
+  function getQueryOpId() {
     return new URL(window.location.href).searchParams.get("id");
   }
 
-  async function loadProcesso() {
-    const user = Auth.currentUser();
-    if (!user) return null;
-    const id = getQueryProcId();
+  async function loadOperacao() {
+    const id = getQueryOpId();
     if (!id) return null;
-    return await App.getProcesso(id);
+    return await Operacoes.get(id);
   }
 
-  async function saveProcesso(proc) {
-    const user = Auth.currentUser();
-    if (!user) return;
-    return await App.upsertProcesso(proc);
-  }
-
-  async function advance(proc, nextStage) {
-    proc.estagio = nextStage;
-    proc.historico = proc.historico || [];
-    proc.historico.push({ estagio: nextStage, at: new Date().toISOString() });
-    await saveProcesso(proc);
-    window.location.href = `jornada.html?id=${proc.id}&stage=${nextStage}`;
-  }
-
-  function getStageFromQueryOrProc(proc) {
+  function getStageFromQueryOrOp(op) {
     const u = new URL(window.location.href);
     const q = u.searchParams.get("stage");
     if (q && ESTAGIOS.find(e => e.id === q)) return q;
-    return proc?.estagio || "cadastro";
+    return op?.estagio || "cadastro";
+  }
+
+  async function advance(op, novoEstagio, extras = {}) {
+    await Operacoes.advance(op.id, novoEstagio, extras);
+    window.location.href = `jornada.html?id=${op.id}&stage=${novoEstagio}`;
   }
 
   // Hash determinístico do id pra decidir sync vs async (40% async)
-  function isAsyncAnalise(proc) {
-    const seed = (proc.id || "").replace(/\D/g, "").slice(-2);
+  function isAsyncAnalise(op) {
+    const seed = (op.id || "").replace(/\D/g, "").slice(-2);
     const n = parseInt(seed || "50", 10);
     return n < 40;
   }
 
-  function render(proc) {
-    const stage = getStageFromQueryOrProc(proc);
+  function isAdvogado(op)        { return op.tipoSolicitante === "advogado"; }
+  function isSoHonorarios(op)    { return op.escopo === "so_honorarios"; }
+
+  // ---------- Render principal ----------
+  async function render(op) {
+    const stage = getStageFromQueryOrOp(op);
     const target  = document.getElementById("journey-content");
     const stepper = document.getElementById("journey-stepper");
     renderStepper(stepper, stage);
+
     const renderer = RENDERERS[stage] || RENDERERS.cadastro;
-    renderer(target, proc);
+    await renderer(target, op);
   }
 
+  // ===========================================================================
+  // RENDERERS
+  // ===========================================================================
   const RENDERERS = {
+
     // ---------- 1. CADASTRO ----------
-    cadastro(target, proc) {
+    async cadastro(target, op) {
       const tribunaisOpts = TRIBUNAIS.map(t => {
-        const sel = proc.tribunal === t ? "selected" : "";
+        const sel = op.processos?.tribunal === t ? "selected" : "";
         return `<option value="${t}" ${sel}>${t}</option>`;
       }).join("");
-      const outrosSel = proc.tribunal && !TRIBUNAIS.includes(proc.tribunal) ? "selected" : "";
+      const tribAtual = op.processos?.tribunal || "";
+      const outrosSel = tribAtual && !TRIBUNAIS.includes(tribAtual) ? "selected" : "";
+
+      const adv = isAdvogado(op);
+      const labelValor = adv
+        ? "Valor estimado dos seus honorários"
+        : "Valor estimado a receber";
+      const hintValor = adv
+        ? "Quanto você espera receber de honorários nesse processo."
+        : "Use o valor total que está na ação ou que seu advogado estimou.";
 
       target.innerHTML = `
-        <h2>Vamos cadastrar o seu processo</h2>
+        <h2>${adv ? "Vamos cadastrar a antecipação dos seus honorários" : "Vamos cadastrar o seu processo"}</h2>
         <p class="muted">
-          Preencha as informações abaixo. Não precisa ser exato agora — você pode ajustar depois,
-          mas quanto mais correto melhor é a análise.
+          Preencha as informações abaixo. Não precisa ser exato agora — você pode ajustar depois.
         </p>
 
         <form id="form-cadastro" class="form mt-3">
           <div class="field">
-            <label class="field__label" for="c-titulo">Como você quer chamar este processo? (apelido)</label>
-            <input id="c-titulo" placeholder="Ex.: Voo cancelado Latam — out/24" value="${proc.titulo || ""}" required>
+            <label class="field__label" for="c-apelido">Apelido (como identificar esta antecipação)</label>
+            <input id="c-apelido" placeholder="${adv ? "Ex.: Honorários Latam – out/24" : "Ex.: Voo cancelado Latam – out/24"}" value="${op.apelido || ""}" required>
             <span class="field__hint">É só para você se localizar no painel.</span>
           </div>
 
@@ -131,16 +147,16 @@ const Jornada = (() => {
             <div class="field">
               <label class="field__label" for="c-tipo">Tipo do processo</label>
               <select id="c-tipo" required>
-                <option value="aereo" ${proc.tipo==="aereo"?"selected":""}>Direito Aéreo</option>
-                <option value="consumidor" ${proc.tipo==="consumidor"?"selected":""}>Consumidor</option>
-                <option value="bancario" ${proc.tipo==="bancario"?"selected":""}>Bancário</option>
-                <option value="outras" ${proc.tipo==="outras"?"selected":""}>Outras relações de consumo</option>
+                <option value="aereo"      ${op.processos?.tipo==="aereo"?"selected":""}>Direito Aéreo</option>
+                <option value="consumidor" ${op.processos?.tipo==="consumidor"?"selected":""}>Consumidor</option>
+                <option value="bancario"   ${op.processos?.tipo==="bancario"?"selected":""}>Bancário</option>
+                <option value="outras"     ${op.processos?.tipo==="outras"?"selected":""}>Outras relações de consumo</option>
               </select>
             </div>
             <div class="field">
-              <label class="field__label" for="c-valor">Valor estimado a receber</label>
-              <input id="c-valor" data-sim-valor inputmode="numeric" placeholder="R$ 0,00" value="${proc.valorEstimado ? App.fmtBRL(proc.valorEstimado) : ""}" required>
-              <span class="field__hint">Use o valor total que está na ação ou que seu advogado estimou.</span>
+              <label class="field__label" for="c-valor">${labelValor}</label>
+              <input id="c-valor" inputmode="numeric" placeholder="R$ 0,00" value="${op.valorEstimado ? App.fmtBRL(op.valorEstimado) : ""}" required>
+              <span class="field__hint">${hintValor}</span>
             </div>
           </div>
 
@@ -149,14 +165,14 @@ const Jornada = (() => {
             <select id="c-tribunal" required>
               <option value="">Selecione...</option>
               ${tribunaisOpts}
-              <option value="__outros__" ${outrosSel}>Outros (digitar manualmente)</option>
+              <option value="__outros__" ${outrosSel?"selected":""}>Outros (digitar manualmente)</option>
             </select>
-            <input id="c-tribunal-outros" class="mt-1 ${outrosSel ? "" : "hide"}" placeholder="Digite o tribunal/vara" value="${outrosSel ? proc.tribunal : ""}">
+            <input id="c-tribunal-outros" class="mt-1 ${outrosSel?"":"hide"}" placeholder="Digite o tribunal/vara" value="${outrosSel?tribAtual:""}">
           </div>
 
           <div class="field">
             <label class="field__label" for="c-descricao">Conte rapidamente o que aconteceu (opcional)</label>
-            <textarea id="c-descricao" rows="3" placeholder="Ex.: Voo Latam cancelado sem aviso, comprei outra passagem do meu bolso...">${proc.descricao || ""}</textarea>
+            <textarea id="c-descricao" rows="3" placeholder="${adv ? "Ex.: Atuei como advogado do autor em ação de indenização contra Latam por voo cancelado..." : "Ex.: Voo Latam cancelado sem aviso, comprei outra passagem do meu bolso..."}">${op.descricao || ""}</textarea>
             <span class="field__hint">Vai nos ajudar na análise. Pode pular se preferir.</span>
           </div>
 
@@ -184,69 +200,74 @@ const Jornada = (() => {
 
       document.getElementById("form-cadastro").onsubmit = async (e) => {
         e.preventDefault();
-        const titulo = document.getElementById("c-titulo").value.trim();
-        const tipo   = document.getElementById("c-tipo").value;
-        const valor  = App.parseBRL(valorEl.value);
+        const apelido = document.getElementById("c-apelido").value.trim();
+        const tipo    = document.getElementById("c-tipo").value;
+        const valor   = App.parseBRL(valorEl.value);
         const tribunal = tribSel.value === "__outros__"
           ? tribOutros.value.trim()
           : tribSel.value;
         const descricao = document.getElementById("c-descricao").value.trim();
 
-        proc.titulo = titulo;
-        proc.tipo = tipo;
-        proc.valorEstimado = valor;
-        proc.tribunal = tribunal;
-        proc.descricao = descricao;
-        proc.estimativa = Simulador.estimar({ valor, tipo });
-        await advance(proc, "consultaAnalise");
+        // Atualiza/Cria processo
+        if (op.processoId) {
+          await Processos.update(op.processoId, { tipo, tribunal });
+        } else {
+          const novoProc = await Processos.create({ tipo, tribunal });
+          op.processoId = novoProc.id;
+        }
+        // Atualiza operação
+        await Operacoes.update(op.id, {
+          processoId: op.processoId,
+          apelido, descricao, valorEstimado: valor,
+        });
+        await advance(op, "consultaAnalise");
       };
     },
 
     // ---------- 2. CONSULTA + ANÁLISE ----------
-    consultaAnalise(target, proc) {
-      const sub = proc.analiseStatus || "form";
-
-      if (sub === "form") {
-        return renderConsultaForm(target, proc);
-      }
-      if (sub === "processando") {
-        return renderProcessando(target, proc);
-      }
-      if (sub === "aguardando_async") {
-        return renderAguardandoAsync(target, proc);
-      }
-      return renderConsultaForm(target, proc);
+    async consultaAnalise(target, op) {
+      const sub = op.analiseStatus || "form";
+      if (sub === "form")              return renderConsultaForm(target, op);
+      if (sub === "processando")       return renderProcessando(target, op);
+      if (sub === "aguardando_async")  return renderAguardandoAsync(target, op);
+      return renderConsultaForm(target, op);
     },
 
     // ---------- 3. OFERTA ----------
-    oferta(target, proc) {
-      const o = proc.oferta;
-      const a = proc.analise;
-      if (!o) {
-        target.innerHTML = `<p>Oferta indisponível. <a href="?id=${proc.id}&stage=consultaAnalise">Voltar à análise</a></p>`;
+    async oferta(target, op) {
+      const oferta = await Ofertas.getCurrent(op.id);
+      const a = op.analise;
+      if (!oferta || !a) {
+        target.innerHTML = `<p>Oferta indisponível. <a href="?id=${op.id}&stage=consultaAnalise">Voltar à análise</a></p>`;
         return;
       }
-      const valorBase = a.valorBaseCausa;
-      const honorariosVal = Math.round(valorBase * HONORARIOS_PCT_PADRAO);
-      const parteClienteVal = valorBase - honorariosVal;
+      const adv = isAdvogado(op);
+      const soHonorarios = isSoHonorarios(op);
 
-      // Oferta integral × parcial
-      const ofertaIntegral = o.valorAntecipadoIntegral;
-      const ofertaParcial  = o.valorAntecipadoParcial;
-      const escolha = proc.escolhaCessao || "integral";
+      const valorBase     = oferta.valorBaseCausa;
+      const valorAntCheio = oferta.valorAntecipado;
+      // Para cliente: pode escolher integral vs parcial
+      // Para advogado (so_honorarios): só uma opção
+      const honorariosVal = Math.round(valorBase * HONORARIOS_PCT_PADRAO);
+      const parteCliente  = valorBase - honorariosVal;
+      const desconto      = oferta.descontoPct;
+      const ofertaParcial = Math.round(parteCliente * (1 - desconto));
+
+      const escolha = op.escolhaCessao || (soHonorarios ? "so_honorarios" : "integral");
 
       target.innerHTML = `
         <h2>Sua proposta está pronta</h2>
         <p class="muted">
-          Boa notícia! Conseguimos uma proposta para o seu processo. Você recebe agora —
-          e a Just Já assume o risco e a espera.
+          ${adv
+            ? "Conseguimos uma proposta para antecipar os seus honorários. Você recebe agora — a Just Já assume o risco e a espera."
+            : "Conseguimos uma proposta para o seu processo. Você recebe agora — a Just Já assume o risco e a espera."}
         </p>
 
         <div class="card mt-3">
-          <h3>O que identificamos no seu processo</h3>
+          <h3>O que identificamos</h3>
           <div class="grid grid--2 mt-2">
             <div>
-              <div class="muted" style="font-size:.85rem;">Valor base da causa (calculado pela análise)</div>
+              <div class="muted" style="font-size:.85rem;">${soHonorarios ? "Valor base dos honorários" : "Valor base da causa"}</div>
               <div style="font-weight:700; font-size:1.4rem;">${App.fmtBRL(valorBase)}</div>
             </div>
             <div>
@@ -262,42 +283,42 @@ const Jornada = (() => {
           </div>
         </div>
 
-        <div class="alert alert--warn mt-3">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
-          <div>
-            <strong>Importante — converse com o seu advogado(a):</strong>
-            parte do valor da causa corresponde aos <strong>honorários advocatícios</strong>
-            (estimados em ${App.fmtBRL(honorariosVal)}, ≈${(HONORARIOS_PCT_PADRAO*100).toFixed(0)}%).
-            Você precisa decidir, junto com o seu advogado(a), se quer antecipar o valor
-            <strong>integral</strong> (incluindo honorários) ou apenas a <strong>sua parte</strong>
-            (sem honorários). Essa escolha define qual termo de cessão será gerado.
+        ${!soHonorarios ? `
+          <div class="alert alert--warn mt-3">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+            <div>
+              <strong>Importante — converse com o seu advogado(a):</strong>
+              parte do valor da causa corresponde aos <strong>honorários advocatícios</strong>
+              (estimados em ${App.fmtBRL(honorariosVal)}, ≈${(HONORARIOS_PCT_PADRAO*100).toFixed(0)}%).
+              Você precisa decidir se quer antecipar o valor <strong>integral</strong> ou apenas a <strong>sua parte</strong>.
+            </div>
           </div>
-        </div>
 
-        <h3 class="mt-3">Escolha como quer antecipar</h3>
-        <div class="grid grid--2 mt-2">
-          <label class="card card--hover ${escolha==='integral'?'card--selected':''}" style="cursor:pointer; ${escolha==='integral'?'border-color: var(--brand-700); box-shadow: 0 0 0 4px var(--brand-100);':''}">
-            <input type="radio" name="escolha" value="integral" ${escolha==='integral'?'checked':''} style="position:absolute; opacity:0;">
-            <div class="muted" style="font-size:.82rem; text-transform:uppercase; letter-spacing:.08em; font-weight:600;">Cessão integral</div>
-            <div class="sim__amount" style="font-size: 2rem;">${App.fmtBRL(ofertaIntegral)}</div>
-            <div class="muted">Antecipa <strong>tudo</strong> — valor seu + honorários do advogado.</div>
-            <div class="muted mt-1" style="font-size:.85rem;">
-              Base: ${App.fmtBRL(valorBase)} · Sua parte é paga em PIX; honorários vão para o(a) advogado(a) conforme combinado entre vocês.
-            </div>
-          </label>
-          <label class="card card--hover ${escolha==='parcial'?'card--selected':''}" style="cursor:pointer; ${escolha==='parcial'?'border-color: var(--brand-700); box-shadow: 0 0 0 4px var(--brand-100);':''}">
-            <input type="radio" name="escolha" value="parcial" ${escolha==='parcial'?'checked':''} style="position:absolute; opacity:0;">
-            <div class="muted" style="font-size:.82rem; text-transform:uppercase; letter-spacing:.08em; font-weight:600;">Só a sua parte</div>
-            <div class="sim__amount" style="font-size: 2rem;">${App.fmtBRL(ofertaParcial)}</div>
-            <div class="muted">Antecipa <strong>apenas a sua parte</strong> — os honorários ficam fora.</div>
-            <div class="muted mt-1" style="font-size:.85rem;">
-              Base sua parte: ${App.fmtBRL(parteClienteVal)} · O(a) advogado(a) continua recebendo no fim do processo, no fluxo normal.
-            </div>
-          </label>
-        </div>
+          <h3 class="mt-3">Escolha como quer antecipar</h3>
+          <div class="grid grid--2 mt-2">
+            <label class="card card--hover ${escolha==='integral'?'card--selected':''}" style="cursor:pointer;">
+              <input type="radio" name="escolha" value="integral" ${escolha==='integral'?'checked':''} style="position:absolute; opacity:0;">
+              <div class="muted" style="font-size:.82rem; text-transform:uppercase; letter-spacing:.08em; font-weight:600;">Cessão integral</div>
+              <div class="sim__amount" style="font-size: 2rem;">${App.fmtBRL(valorAntCheio)}</div>
+              <div class="muted">Antecipa <strong>tudo</strong> — valor seu + honorários do advogado.</div>
+            </label>
+            <label class="card card--hover ${escolha==='parcial'?'card--selected':''}" style="cursor:pointer;">
+              <input type="radio" name="escolha" value="parcial" ${escolha==='parcial'?'checked':''} style="position:absolute; opacity:0;">
+              <div class="muted" style="font-size:.82rem; text-transform:uppercase; letter-spacing:.08em; font-weight:600;">Só a sua parte</div>
+              <div class="sim__amount" style="font-size: 2rem;">${App.fmtBRL(ofertaParcial)}</div>
+              <div class="muted">Antecipa <strong>apenas a sua parte</strong> — os honorários ficam fora.</div>
+            </label>
+          </div>
+        ` : `
+          <div class="card mt-3" style="background: linear-gradient(135deg, var(--brand-50), #fff); border-color: var(--brand-100);">
+            <div class="muted" style="font-size:.85rem; text-transform:uppercase; letter-spacing:.08em; font-weight:600;">Você recebe agora</div>
+            <div class="sim__amount" style="font-size: 2.6rem;">${App.fmtBRL(valorAntCheio)}</div>
+            <div class="muted">de um valor de honorários estimado de <strong>${App.fmtBRL(valorBase)}</strong></div>
+          </div>
+        `}
 
         <div class="muted mt-3" style="font-size:.82rem; max-width: 720px;">
-          Validade da proposta: <strong>${o.validadeDias} dias</strong>.
+          Validade da proposta: <strong>${oferta.validadeDias} dias</strong>.
           A proposta pode sofrer ajustes caso o valor informado seja diferente do calculado inicialmente pela análise.
         </div>
 
@@ -308,54 +329,65 @@ const Jornada = (() => {
         </div>
       `;
 
-      // Seleção de cartões (radio visual)
       target.querySelectorAll('input[name="escolha"]').forEach(r => {
         r.addEventListener("change", async () => {
-          proc.escolhaCessao = r.value;
-          await saveProcesso(proc);
-          render(proc);
+          op.escolhaCessao = r.value;
+          await Operacoes.update(op.id, { escolhaCessao: r.value });
+          await render(op);
         });
       });
 
       document.getElementById("btn-aceitar").onclick = async () => {
-        proc.escolhaCessao = proc.escolhaCessao || "integral";
-        proc.oferta.valorAntecipadoFinal = proc.escolhaCessao === "integral"
-          ? ofertaIntegral : ofertaParcial;
-        await advance(proc, "assinatura");
+        const escolhaFinal = soHonorarios ? "so_honorarios" : (op.escolhaCessao || "integral");
+        const valorFinal = escolhaFinal === "parcial" ? ofertaParcial : valorAntCheio;
+        await Ofertas.aceitar(oferta.id, escolhaFinal);
+        await Operacoes.update(op.id, { escolhaCessao: escolhaFinal });
+        await advance(op, "assinatura", { escolhaCessao: escolhaFinal });
       };
       document.getElementById("btn-revisar").onclick = () => {
         alert("Pedido de revisão registrado. Nosso time entrará em contato em até 1 dia útil.");
       };
       document.getElementById("btn-recusar").onclick = async () => {
         if (confirm("Tem certeza que quer recusar a proposta?")) {
-          proc.estagio = "recusada";
-          await saveProcesso(proc);
+          await Operacoes.update(op.id, { estagio: "recusada", status: "recusada" });
           window.location.href = "dashboard.html";
         }
       };
     },
 
     // ---------- 4. ASSINATURA ----------
-    assinatura(target, proc) {
-      const tipoTermo = proc.escolhaCessao === "parcial"
-        ? "Termo de cessão parcial (apenas a parte do cliente, sem honorários)"
-        : "Termo de cessão integral (valor cheio, incluindo honorários)";
+    async assinatura(target, op) {
+      const oferta = await Ofertas.getCurrent(op.id);
+      if (!oferta) {
+        target.innerHTML = `<p>Não há oferta aceita ainda. <a href="?id=${op.id}&stage=oferta">Voltar</a></p>`;
+        return;
+      }
+      const escolha = op.escolhaCessao || "integral";
+      const adv = isAdvogado(op);
+      const tipoTermo = adv
+        ? "Termo de cessão de honorários"
+        : escolha === "parcial"
+          ? "Termo de cessão parcial (apenas a parte do cliente)"
+          : "Termo de cessão integral (valor cheio, incluindo honorários)";
+      const valorFinal = escolha === "parcial"
+        ? Math.round((oferta.valorBaseCausa * (1 - HONORARIOS_PCT_PADRAO)) * (1 - oferta.descontoPct))
+        : oferta.valorAntecipado;
 
       target.innerHTML = `
         <h2>Assinatura do contrato</h2>
         <p class="muted">
-          Vamos formalizar a cessão. Você assina o contrato com a Just Já e também o termo de cessão
-          que será protocolado no seu processo (com a anuência do seu advogado).
+          Vamos formalizar a cessão. Você assina o contrato com a Just Já e também o termo
+          que será protocolado no processo${adv ? "" : " (com a anuência do seu advogado)"}.
         </p>
 
         <div class="card mt-3">
           <h3>Resumo da operação</h3>
           <table style="width:100%; font-size:.96rem;">
-            <tr><td class="muted">Processo:</td><td>${proc.numeroCnj || "—"}</td></tr>
-            <tr><td class="muted">Tribunal:</td><td>${proc.tribunal || "—"}</td></tr>
-            <tr><td class="muted">Valor base da causa:</td><td><strong>${App.fmtBRL(proc.analise.valorBaseCausa)}</strong></td></tr>
-            <tr><td class="muted">Modalidade escolhida:</td><td><strong>${proc.escolhaCessao === "integral" ? "Cessão integral" : "Só a sua parte"}</strong></td></tr>
-            <tr><td class="muted">Valor a receber agora:</td><td><strong>${App.fmtBRL(proc.oferta.valorAntecipadoFinal)}</strong></td></tr>
+            <tr><td class="muted">Processo:</td><td>${op.processos?.numeroCnj || "—"}</td></tr>
+            <tr><td class="muted">Tribunal:</td><td>${op.processos?.tribunal || "—"}</td></tr>
+            <tr><td class="muted">${adv ? "Valor base dos honorários" : "Valor base da causa"}:</td><td><strong>${App.fmtBRL(oferta.valorBaseCausa)}</strong></td></tr>
+            <tr><td class="muted">Modalidade:</td><td><strong>${tipoTermo}</strong></td></tr>
+            <tr><td class="muted">Valor a receber agora:</td><td><strong>${App.fmtBRL(valorFinal)}</strong></td></tr>
           </table>
         </div>
 
@@ -363,11 +395,11 @@ const Jornada = (() => {
           <h3>Documentos a assinar</h3>
           <ol>
             <li><strong>Contrato de cessão de crédito</strong> (cliente + Just Já) — base legal: Art. 286 do CC</li>
-            <li><strong>${tipoTermo}</strong> — a ser juntado aos autos do processo (cliente + advogado + Just Já)</li>
+            <li><strong>${tipoTermo}</strong> — a ser juntado aos autos do processo</li>
           </ol>
           <p class="muted" style="font-size:.9rem;">
-            Antes de assinar, baixe a minuta do termo de cessão abaixo, leia com calma e mostre ao seu advogado.
-            Em produção, a assinatura será eletrônica (certificado ICP-Brasil ou Clicksign / D4Sign).
+            Antes de assinar, baixe a minuta do termo abaixo, leia com calma${adv ? "" : " e mostre ao seu advogado"}.
+            Em produção, a assinatura será eletrônica (certificado ICP-Brasil ou Clicksign/D4Sign).
           </p>
           <button type="button" class="btn btn--ghost mt-2" id="btn-baixar-minuta">
             📄 Baixar minuta do termo de cessão (PDF)
@@ -385,7 +417,7 @@ const Jornada = (() => {
           </label>
           <label class="checkbox">
             <input type="checkbox" required>
-            <span>Confirmo que sou a parte legítima do processo informado e que as informações prestadas são verdadeiras.</span>
+            <span>Confirmo que sou ${adv ? "o(a) advogado(a) constituído(a) no processo" : "a parte legítima do processo"} informado e que as informações prestadas são verdadeiras.</span>
           </label>
           <div class="journey-actions">
             <button type="submit" class="btn btn--accent btn--lg">Assinar contrato →</button>
@@ -393,68 +425,82 @@ const Jornada = (() => {
           </div>
         </form>
       `;
-      document.getElementById("btn-back").onclick = async () => await advance(proc, "oferta");
-      document.getElementById("btn-baixar-minuta").onclick = () => {
-        TermoCessao.gerar(proc, Auth.currentUser());
+
+      // Adapta o objeto pro PDF (TermoCessao espera dados similares ao antigo `proc`)
+      const procLikeParaPDF = {
+        id: op.id,
+        numeroCnj: op.processos?.numeroCnj,
+        tribunal: op.processos?.tribunal,
+        cpfTitular: op.cpfTitular,
+        advogadoTexto: op.advogadoTexto,
+        escolhaCessao: escolha,
+        valorEstimado: op.valorEstimado,
+        analise: { valorBaseCausa: oferta.valorBaseCausa },
+        oferta: {
+          valorAntecipadoFinal: valorFinal,
+          valorAntecipadoIntegral: oferta.valorAntecipado,
+        },
       };
+
+      document.getElementById("btn-baixar-minuta").onclick = () => {
+        TermoCessao.gerar(procLikeParaPDF, Auth.currentUser());
+      };
+      document.getElementById("btn-back").onclick = async () => await advance(op, "oferta");
       document.getElementById("form-sign").onsubmit = async (e) => {
         e.preventDefault();
-        proc.assinatura = {
-          nome: document.getElementById("nome-completo").value,
-          assinadoEm: new Date().toISOString(),
-          ip: "mock-ip-127.0.0.1",
-          hash: "mock-hash-" + Math.random().toString(36).slice(2, 12),
-          tipoTermo,
-        };
-        await advance(proc, "protocolacao");
+        const nome = document.getElementById("nome-completo").value;
+        await Assinaturas.create({
+          operacaoId: op.id,
+          ofertaId: oferta.id,
+          role: "cedente",
+          nomeDigitado: nome,
+          ip: "client-side",
+          hash: "demo-" + Math.random().toString(36).slice(2, 12),
+        });
+        await advance(op, "protocolacao");
       };
     },
 
-    // ---------- 5. PROTOCOLAÇÃO (upload pelo cliente/advogado) ----------
-    protocolacao(target, proc) {
-      const recebido = !!proc.protocolacao?.comprovanteEnviado;
+    // ---------- 5. PROTOCOLAÇÃO ----------
+    async protocolacao(target, op) {
+      const recebido = !!op.protocolacao?.comprovanteEnviado;
 
       if (!recebido) {
         target.innerHTML = `
           <h2>Protocole o termo de cessão nos autos</h2>
           <p class="muted">
-            Agora você (ou seu advogado) precisa <strong>protocolar o termo de cessão</strong> no
-            processo, juntando o documento aos autos via PJe / e-SAJ / sistema do tribunal.
-            Esse passo dá publicidade à cessão e é o que garante que o valor, quando pago pelo tribunal,
-            vá para a Just Já — por isso a gente consegue te antecipar o dinheiro.
+            Agora você ${isAdvogado(op) ? "" : "(ou seu advogado) "}precisa <strong>protocolar o termo de cessão</strong>
+            no processo, juntando o documento aos autos via PJe / e-SAJ / sistema do tribunal.
+            Esse passo dá publicidade à cessão e é o que garante que o valor, quando pago pelo tribunal, vá para a Just Já.
           </p>
 
           <div class="card mt-3">
             <h3>Como fazer (passo a passo)</h3>
             <ol>
               <li>Baixe o <strong>termo de cessão</strong> assinado (o link foi enviado para o seu e-mail).</li>
-              <li>Envie para o seu advogado(a) — combine com ele(a) quem vai protocolar.</li>
+              ${isAdvogado(op) ? "" : "<li>Envie para o seu advogado(a) — combine com ele(a) quem vai protocolar.</li>"}
               <li>Faça a juntada no sistema do tribunal (PJe / e-SAJ / Projudi etc.).</li>
               <li>Salve o comprovante de protocolação (PDF gerado pelo sistema).</li>
-              <li>Suba o comprovante aqui embaixo.</li>
+              <li>Suba os dois documentos aqui embaixo.</li>
             </ol>
-            <p class="muted" style="font-size:.9rem;">
-              Se preferir que a gente acompanhe diretamente com o seu advogado(a),
-              fale com nosso suporte: <a href="../index.html#contato">enviar mensagem</a>.
-            </p>
           </div>
 
           <form id="form-upload" class="form mt-3">
             <div class="field">
               <label class="field__label" for="termo-assinado">1) Termo de cessão assinado (PDF)</label>
               <input id="termo-assinado" type="file" accept=".pdf,.jpg,.jpeg,.png" required>
-              <span class="field__hint">O termo que você baixou no passo anterior, agora com as assinaturas (você + advogado + Just Já).</span>
+              <span class="field__hint">O termo que você baixou no passo anterior, agora com as assinaturas.</span>
             </div>
             <div class="field">
               <label class="field__label" for="comprovante">2) Comprovante de protocolação (PDF)</label>
               <input id="comprovante" type="file" accept=".pdf,.jpg,.jpeg,.png" required>
-              <span class="field__hint">PDF gerado pelo PJe / e-SAJ / sistema do tribunal após a juntada nos autos.</span>
+              <span class="field__hint">PDF gerado pelo PJe / e-SAJ após a juntada nos autos.</span>
             </div>
             <div class="field">
               <label class="field__label" for="protocolado-por">Quem protocolou?</label>
               <select id="protocolado-por">
-                <option value="advogado">Meu advogado(a)</option>
-                <option value="cliente">Eu mesmo(a)</option>
+                <option value="advogado">${isAdvogado(op) ? "Eu mesmo(a)" : "Meu advogado(a)"}</option>
+                <option value="cliente">${isAdvogado(op) ? "Meu cliente" : "Eu mesmo(a)"}</option>
               </select>
             </div>
             <div class="field">
@@ -463,53 +509,41 @@ const Jornada = (() => {
             </div>
             <div class="alert">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-              <div>Tamanho máximo por arquivo: 10 MB. Pode ser o PDF original ou um print legível.</div>
+              <div>Tamanho máximo por arquivo: 10 MB.</div>
             </div>
             <div class="journey-actions">
               <button type="submit" class="btn btn--primary btn--lg">Enviar documentos →</button>
             </div>
           </form>
         `;
+
         const submitBtn = document.querySelector("#form-upload button[type=submit]");
         document.getElementById("form-upload").onsubmit = async (e) => {
           e.preventDefault();
           const termoFile       = document.getElementById("termo-assinado").files[0];
           const comprovanteFile = document.getElementById("comprovante").files[0];
           if (!termoFile || !comprovanteFile) return;
-
           for (const f of [termoFile, comprovanteFile]) {
             if (f.size > 10 * 1024 * 1024) {
-              alert(`Arquivo "${f.name}" maior que 10 MB.`);
-              return;
+              alert(`Arquivo "${f.name}" maior que 10 MB.`); return;
             }
           }
-
           submitBtn.disabled = true;
           submitBtn.textContent = "Enviando…";
 
-          // Helper que sobe um arquivo e devolve { path, url }
           async function uploadOne(prefix, file) {
             const userId = Auth.currentUser().id;
-            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-            const path = `${userId}/${proc.id}/${prefix}-${Date.now()}-${safeName}`;
-            const { error: upErr } = await Auth.client()
-              .storage.from("comprovantes")
-              .upload(path, file, {
-                cacheControl: "3600",
-                upsert: false,
-                contentType: file.type || "application/octet-stream",
-              });
+            const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+            const path = `${userId}/${op.id}/${prefix}-${Date.now()}-${safe}`;
+            const { error: upErr } = await Auth.client().storage
+              .from("comprovantes")
+              .upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type || "application/octet-stream" });
             if (upErr) throw upErr;
-            const { data: signed, error: signErr } = await Auth.client()
-              .storage.from("comprovantes")
+            const { data: signed, error: signErr } = await Auth.client().storage
+              .from("comprovantes")
               .createSignedUrl(path, 60 * 60 * 24 * 365);
             if (signErr) throw signErr;
-            return {
-              nome: file.name,
-              tamanho: file.size,
-              path,
-              url: signed.signedUrl,
-            };
+            return { nome: file.name, tamanho: file.size, path, url: signed.signedUrl };
           }
 
           try {
@@ -517,31 +551,26 @@ const Jornada = (() => {
               uploadOne("termo-assinado", termoFile),
               uploadOne("comprovante", comprovanteFile),
             ]);
-
-            proc.protocolacao = {
+            const protocolacao = {
               comprovanteEnviado: true,
-
-              // Termo assinado
               termoAssinadoNome: termo.nome,
               termoAssinadoTamanho: termo.tamanho,
               termoAssinadoPath: termo.path,
               termoAssinadoUrl: termo.url,
-
-              // Comprovante de protocolação
               comprovanteNome: comprovante.nome,
               comprovanteTamanho: comprovante.tamanho,
               comprovantePath: comprovante.path,
               comprovanteUrl: comprovante.url,
-
               protocoladoPor: document.getElementById("protocolado-por").value,
               numeroProtocolo: document.getElementById("numero-protocolo").value,
               enviadoEm: new Date().toISOString(),
               prazoAnaliseHoras: 24,
               prazoPagamentoHoras: 24,
             };
-            proc.pagamentoStatus = "no_carrinho";
-            await saveProcesso(proc);
-            render(proc);
+            await Operacoes.update(op.id, { protocolacao, pagamentoStatus: "no_carrinho" });
+            op.protocolacao = protocolacao;
+            op.pagamentoStatus = "no_carrinho";
+            await render(op);
           } catch (err) {
             console.error("Upload falhou:", err);
             alert("Falha no upload: " + (err.message || err));
@@ -550,9 +579,9 @@ const Jornada = (() => {
           }
         };
       } else {
-        const p = proc.protocolacao;
+        const p = op.protocolacao;
         target.innerHTML = `
-          <h2>✅ Comprovante recebido</h2>
+          <h2>✅ Documentos recebidos</h2>
           <p class="muted">Tudo certo. Vamos validar e liberar o seu pagamento.</p>
 
           <div class="card mt-3" style="background: linear-gradient(135deg, var(--success-100), #fff); border-color: #86efac;">
@@ -570,10 +599,7 @@ const Jornada = (() => {
 
           <div class="alert mt-3">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>
-            <div>
-              Seu pagamento agora está <strong>no carrinho</strong> da Just Já — aguardando a liberação interna.
-              Você pode acompanhar o status na próxima tela ou pelo painel.
-            </div>
+            <div>Seu pagamento agora está <strong>no carrinho</strong> da Just Já — aguardando a liberação interna.</div>
           </div>
 
           <div class="journey-actions">
@@ -581,14 +607,18 @@ const Jornada = (() => {
             <a href="dashboard.html" class="btn btn--ghost">Voltar ao painel</a>
           </div>
         `;
-        document.getElementById("btn-pgto").onclick = async () => await advance(proc, "pagamento");
+        document.getElementById("btn-pgto").onclick = async () => await advance(op, "pagamento");
       }
     },
 
     // ---------- 6. PAGAMENTO ----------
-    pagamento(target, proc) {
-      const status = proc.pagamentoStatus || "no_carrinho";
-      const valor = proc.oferta?.valorAntecipadoFinal || proc.oferta?.valorAntecipadoIntegral || 0;
+    async pagamento(target, op) {
+      const oferta = await Ofertas.getCurrent(op.id);
+      const status = op.pagamentoStatus || "no_carrinho";
+      const escolha = op.escolhaCessao || "integral";
+      const valor = escolha === "parcial" && oferta
+        ? Math.round((oferta.valorBaseCausa * (1 - HONORARIOS_PCT_PADRAO)) * (1 - oferta.descontoPct))
+        : (oferta?.valorAntecipado || 0);
 
       if (status === "pago") {
         target.innerHTML = `
@@ -597,15 +627,7 @@ const Jornada = (() => {
           <div class="card mt-3" style="background: linear-gradient(135deg, var(--success-100), #fff); border-color: #86efac;">
             <h3>Valor pago</h3>
             <div class="sim__amount" style="color: var(--success-600); font-size: 2.6rem;">${App.fmtBRL(valor)}</div>
-            <div class="muted">PIX enviado em ${App.fmtDate(proc.pagamento?.pagoEm)}</div>
-          </div>
-          <div class="card mt-3">
-            <h3>O que vem agora?</h3>
-            <ul>
-              <li>Você não precisa fazer mais nada.</li>
-              <li>A Just Já acompanha o seu processo até o pagamento final pelo tribunal.</li>
-              <li>Dúvidas: <a href="../index.html#contato">fale com a gente</a>.</li>
-            </ul>
+            <div class="muted">PIX enviado em ${App.fmtDate(op.pagamento?.pagoEm)}</div>
           </div>
           <div class="journey-actions">
             <a href="dashboard.html" class="btn btn--primary">Voltar ao painel</a>
@@ -616,15 +638,15 @@ const Jornada = (() => {
           <h2>Pagamento no carrinho</h2>
           <p class="muted">
             Seu pedido está na fila para liberação. Assim que o comprovante for validado,
-            o PIX cai na sua conta cadastrada (chave CPF).
+            o PIX cai na sua conta cadastrada.
           </p>
           <div class="card mt-3">
             <h3>Resumo</h3>
             <table style="width:100%; font-size:.96rem;">
               <tr><td class="muted">Valor a receber:</td><td><strong>${App.fmtBRL(valor)}</strong></td></tr>
-              <tr><td class="muted">Modalidade:</td><td>${proc.escolhaCessao === "integral" ? "Cessão integral" : "Só a sua parte"}</td></tr>
+              <tr><td class="muted">Modalidade:</td><td>${labelEscolha(escolha)}</td></tr>
               <tr><td class="muted">Status:</td><td><span class="badge badge--warn">No carrinho — aguardando validação</span></td></tr>
-              <tr><td class="muted">Previsão de pagamento:</td><td>até ${proc.protocolacao?.prazoPagamentoHoras || 24}h após validação</td></tr>
+              <tr><td class="muted">Previsão de pagamento:</td><td>até ${op.protocolacao?.prazoPagamentoHoras || 24}h após validação</td></tr>
             </table>
           </div>
           <div class="journey-actions">
@@ -633,19 +655,22 @@ const Jornada = (() => {
           </div>
         `;
         document.getElementById("btn-simular-pago").onclick = async () => {
-          proc.pagamentoStatus = "pago";
-          proc.pagamento = { pagoEm: new Date().toISOString(), valor };
-          proc.status = "concluido";
-          await saveProcesso(proc);
-          render(proc);
+          const pagamento = { pagoEm: new Date().toISOString(), valor };
+          await Operacoes.update(op.id, { pagamentoStatus: "pago", pagamento, status: "concluida" });
+          op.pagamentoStatus = "pago";
+          op.pagamento = pagamento;
+          await render(op);
         };
       }
     },
   };
 
-  // ---------- Sub-renderers de Consulta + Análise ----------
+  // ===========================================================================
+  // Sub-renderers de Consulta + Análise
+  // ===========================================================================
+  function renderConsultaForm(target, op) {
+    const adv = isAdvogado(op);
 
-  function renderConsultaForm(target, proc) {
     target.innerHTML = `
       <h2>Vamos analisar o seu processo</h2>
       <p class="muted">
@@ -656,33 +681,35 @@ const Jornada = (() => {
       <form class="form mt-3" id="form-consulta">
         <div class="field">
           <label class="field__label" for="cnj">Número do processo (CNJ)</label>
-          <input id="cnj" placeholder="0000000-00.0000.0.00.0000" value="${proc.numeroCnj || ""}" required>
-          <span class="field__hint">Você encontra esse número na intimação ou com seu advogado.</span>
+          <input id="cnj" placeholder="0000000-00.0000.0.00.0000" value="${op.processos?.numeroCnj || ""}" required>
+          <span class="field__hint">Você encontra esse número na intimação ou no sistema do tribunal.</span>
         </div>
 
         <div class="field">
-          <label class="field__label" for="cpf-consulta">Seu CPF</label>
-          <input id="cpf-consulta" placeholder="000.000.000-00" value="${proc.cpfTitular || ""}" required>
-          <span class="field__hint">Necessário para confirmar que você é parte do processo.</span>
+          <label class="field__label" for="cpf-consulta">${adv ? "CPF do(a) seu(sua) cliente" : "Seu CPF"}</label>
+          <input id="cpf-consulta" placeholder="000.000.000-00" value="${op.cpfTitular || ""}" required>
+          <span class="field__hint">${adv ? "Necessário para confirmar a parte do processo." : "Necessário para confirmar que você é parte do processo."}</span>
         </div>
 
-        <div class="field">
-          <label class="field__label" for="advogado">Nome do(a) seu(sua) advogado(a)</label>
-          <input id="advogado" placeholder="Nome completo" value="${proc.advogadoTexto || ""}">
-          <span class="field__hint">Para que possamos contatá-lo(a) sobre a cessão. Opcional nesta etapa.</span>
-        </div>
+        ${!adv ? `
+          <div class="field">
+            <label class="field__label" for="advogado">Nome do(a) seu(sua) advogado(a)</label>
+            <input id="advogado" placeholder="Nome completo" value="${op.advogadoTexto || ""}">
+            <span class="field__hint">Para que possamos contatá-lo(a) sobre a cessão. Opcional nesta etapa.</span>
+          </div>
+        ` : ""}
 
         <div class="alert">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7v6c0 5 4 9 10 11 6-2 10-6 10-11V7l-10-5z"/></svg>
           <div>
             <strong>Autorização de consulta</strong><br>
-            Ao continuar, você autoriza a Just Já a consultar os andamentos do seu processo nos sistemas
+            Ao continuar, você autoriza a Just Já a consultar os andamentos do processo nos sistemas
             públicos do tribunal, com a única finalidade de avaliar a viabilidade da antecipação. Nenhum
             dado é compartilhado com terceiros. Veja nossa
             <a href="../privacidade.html" target="_blank" style="color:inherit; text-decoration:underline;">política de privacidade</a>.
             <label class="checkbox" style="margin-top:12px;">
               <input type="checkbox" id="autorizo" required>
-              <span>Eu autorizo a consulta ao meu processo e declaro que sou parte legítima nele.</span>
+              <span>Eu autorizo a consulta ao processo informado.</span>
             </label>
           </div>
         </div>
@@ -695,28 +722,38 @@ const Jornada = (() => {
     `;
     App.bindMask(document.getElementById("cnj"), App.maskCNJ);
     App.bindMask(document.getElementById("cpf-consulta"), App.maskCPF);
-    document.getElementById("btn-back").onclick = async () => await advance(proc, "cadastro");
+    document.getElementById("btn-back").onclick = async () => await advance(op, "cadastro");
 
     document.getElementById("form-consulta").onsubmit = async (e) => {
       e.preventDefault();
       if (!document.getElementById("autorizo").checked) return;
-      proc.numeroCnj = document.getElementById("cnj").value;
-      proc.cpfTitular = document.getElementById("cpf-consulta").value;
-      proc.advogadoTexto = document.getElementById("advogado").value;
-      proc.autorizouConsulta = true;
-      proc.autorizadoEm = new Date().toISOString();
-      proc.analiseStatus = "processando";
-      await saveProcesso(proc);
-      render(proc);
+      const cnj = document.getElementById("cnj").value;
+      const cpf = document.getElementById("cpf-consulta").value;
+      const advogadoTexto = !adv ? document.getElementById("advogado").value : null;
+
+      // Atualiza processo com CNJ
+      if (op.processoId) {
+        await Processos.update(op.processoId, { numeroCnj: cnj });
+      }
+      await Operacoes.update(op.id, {
+        cpfTitular: cpf,
+        advogadoTexto,
+        autorizouConsulta: true,
+        autorizadoEm: new Date().toISOString(),
+        analiseStatus: "processando",
+      });
+      // Reload + render
+      const fresh = await Operacoes.get(op.id);
+      await render(fresh);
     };
   }
 
-  function renderProcessando(target, proc) {
+  function renderProcessando(target, op) {
     target.innerHTML = `
       <h2>Analisando o seu processo</h2>
       <p class="muted">
         Estamos consultando os andamentos do processo, identificando a fase atual,
-        decisões já proferidas e calculando o valor base da causa.
+        decisões já proferidas e calculando o valor base${isSoHonorarios(op) ? " dos honorários" : " da causa"}.
       </p>
       <div class="spinner"></div>
       <div class="loading-text" id="loading-msg">Consultando o seu processo…</div>
@@ -726,7 +763,7 @@ const Jornada = (() => {
       "Lendo os últimos andamentos…",
       "Identificando decisões e despachos…",
       "Identificando a fase processual atual…",
-      "Calculando o valor base da causa…",
+      "Calculando o valor base…",
       "Estimando a classe de risco…",
     ];
     const el = document.getElementById("loading-msg");
@@ -736,59 +773,55 @@ const Jornada = (() => {
       if (i < msgs.length) el.textContent = msgs[i];
     }, 900);
 
-    setTimeout(() => {
+    setTimeout(async () => {
       clearInterval(itv);
-      // Gera análise + oferta (mock determinístico por id)
-      const valorDeclarado = proc.valorEstimado || 10000;
-      // valor base pode divergir do declarado em ±15% (placeholder de LLM)
-      const seed = (proc.id || "").replace(/\D/g, "").slice(-3);
+      // Gerar análise + oferta (mock)
+      const valorDeclarado = op.valorEstimado || 10000;
+      const seed = (op.id || "").replace(/\D/g, "").slice(-3);
       const n = parseInt(seed || "500", 10);
       const desvio = ((n % 30) - 15) / 100;
       const valorBaseCausa = Math.round(valorDeclarado * (1 + desvio));
 
-      const classe = (() => {
-        const k = n % 100;
-        if (k < 25) return "B";
-        if (k < 60) return "C";
-        if (k < 85) return "D";
-        return "E";
-      })();
+      const k = n % 100;
+      const classe = k < 25 ? "B" : k < 60 ? "C" : k < 85 ? "D" : "E";
       const desconto = { A: 0.10, B: 0.18, C: 0.28, D: 0.40, E: 0.55 }[classe];
-      const valorAntecipadoIntegral = Math.round(valorBaseCausa * (1 - desconto));
-      const parteCliente = Math.round(valorBaseCausa * (1 - HONORARIOS_PCT_PADRAO));
-      const valorAntecipadoParcial = Math.round(parteCliente * (1 - desconto));
+      const valorAntecipado = Math.round(valorBaseCausa * (1 - desconto));
 
-      proc.analise = {
+      const analise = {
         valorBaseCausa,
         fase: "Em fase de cumprimento de sentença",
         decisao: "Sentença favorável transitada em julgado",
         classe,
         confianca: 0.82,
       };
-      proc.oferta = {
-        valorOriginal: valorDeclarado,
-        valorBaseCausa,
-        valorAntecipadoIntegral,
-        valorAntecipadoParcial,
-        descontoPct: desconto,
-        validadeDias: 7,
-        geradaEm: new Date().toISOString(),
-      };
 
-      (async () => {
-        if (isAsyncAnalise(proc)) {
-          proc.analiseStatus = "aguardando_async";
-          await saveProcesso(proc);
-          render(proc);
+      try {
+        await Operacoes.update(op.id, { analise });
+        await Ofertas.create({
+          operacaoId: op.id,
+          valorBaseCausa,
+          valorAntecipado,
+          descontoPct: desconto,
+          validadeDias: 7,
+          memorial: { classe, desconto, valorDeclarado, valorBaseCausa },
+        });
+
+        if (isAsyncAnalise(op)) {
+          await Operacoes.update(op.id, { analiseStatus: "aguardando_async" });
+          const fresh = await Operacoes.get(op.id);
+          await render(fresh);
         } else {
-          proc.analiseStatus = "concluida";
-          await advance(proc, "oferta");
+          await Operacoes.update(op.id, { analiseStatus: "concluida" });
+          await advance(op, "oferta");
         }
-      })();
+      } catch (err) {
+        console.error(err);
+        target.innerHTML = `<div class="alert alert--danger"><div>Falha ao gerar oferta: ${err.message || err}</div></div>`;
+      }
     }, 4800);
   }
 
-  function renderAguardandoAsync(target, proc) {
+  function renderAguardandoAsync(target, op) {
     target.innerHTML = `
       <h2>Análise mais detalhada em andamento</h2>
       <p class="muted">
@@ -796,33 +829,34 @@ const Jornada = (() => {
         nosso time vai concluir a análise e <strong>você será notificado(a) por e-mail</strong>
         assim que a proposta estiver pronta.
       </p>
-
       <div class="card mt-3">
         <h3>Próximos passos</h3>
         <ul style="font-size:.96rem;">
-          <li>📩 Você recebe um e-mail em <strong>${Auth.currentUser().email}</strong> assim que a proposta sair (geralmente em até 24h úteis).</li>
+          <li>📩 Você recebe um e-mail em <strong>${Auth.currentUser().email}</strong> assim que a proposta sair (geralmente em até 24h).</li>
           <li>📊 Você pode acompanhar o status no painel a qualquer momento.</li>
           <li>❓ Se preferir, fale com nosso time pelo <a href="../index.html#contato">canal de suporte</a>.</li>
         </ul>
       </div>
-
-      <div class="alert mt-3">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        <div>Enquanto isso, seu processo está com status <strong>"Em análise"</strong> no seu painel.</div>
-      </div>
-
       <div class="journey-actions">
         <a href="dashboard.html" class="btn btn--primary">Voltar ao painel</a>
         <button class="btn btn--ghost" id="btn-simular-pronto">[demo] Simular notificação recebida</button>
       </div>
     `;
     document.getElementById("btn-simular-pronto").onclick = async () => {
-      proc.analiseStatus = "concluida";
-      await advance(proc, "oferta");
+      await Operacoes.update(op.id, { analiseStatus: "concluida" });
+      await advance(op, "oferta");
     };
   }
 
-  return { ESTAGIOS, TRIBUNAIS, render, loadProcesso, advance };
+  function labelEscolha(escolha) {
+    return ({
+      integral: "Cessão integral",
+      parcial:  "Só a sua parte",
+      so_honorarios: "Cessão de honorários",
+    })[escolha] || escolha;
+  }
+
+  return { ESTAGIOS, TRIBUNAIS, render, loadOperacao, advance };
 })();
 
 window.Jornada = Jornada;

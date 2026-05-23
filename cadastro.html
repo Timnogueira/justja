@@ -33,9 +33,34 @@
 </header>
 
 <main class="auth">
-  <div class="auth__card" style="max-width: 520px;">
-    <h1>Criar minha conta</h1>
-    <p class="lead">Leva 1 minuto. Sem cobrança e sem compromisso — você decide se vai adiante.</p>
+  <!-- Etapa 1: escolha de perfil -->
+  <div class="auth__card" id="step-role" style="max-width: 560px;">
+    <h1>Vamos começar</h1>
+    <p class="lead">Qual o seu perfil?</p>
+
+    <div class="grid grid--2 mt-3" style="gap: 14px;">
+      <button class="card card--hover role-choice" data-role="cliente" style="cursor:pointer; text-align:left;">
+        <div class="card__icon">👤</div>
+        <h3>Sou autor do processo</h3>
+        <p>Tenho um processo judicial e quero antecipar o valor que vou receber.</p>
+      </button>
+      <button class="card card--hover role-choice" data-role="advogado" style="cursor:pointer; text-align:left;">
+        <div class="card__icon card__icon--accent">⚖️</div>
+        <h3>Sou advogado(a)</h3>
+        <p>Quero antecipar meus honorários ou ajudar meus clientes a antecipar o valor deles.</p>
+      </button>
+    </div>
+
+    <div class="auth__footer">
+      Já tem conta? <a href="login.html"><strong>Entrar</strong></a>
+    </div>
+  </div>
+
+  <!-- Etapa 2: formulário (cliente OU advogado) -->
+  <div class="auth__card hide" id="step-form" style="max-width: 520px;">
+    <button class="btn btn--link" id="btn-trocar-role" style="padding:0; font-size:.9rem; margin-bottom:8px;">← Trocar tipo de conta</button>
+    <h1 id="form-title">Criar minha conta</h1>
+    <p class="lead" id="form-subtitle">Leva 1 minuto. Sem cobrança e sem compromisso.</p>
 
     <form class="form mt-3" id="signup-form" novalidate>
       <div class="field">
@@ -43,15 +68,40 @@
         <input id="nome" autocomplete="name" required>
         <span class="field__error"></span>
       </div>
+
       <div class="field">
         <label class="field__label" for="tel">Telefone (WhatsApp)</label>
         <input id="tel" inputmode="tel" placeholder="(00) 00000-0000" autocomplete="tel" required>
       </div>
+
       <div class="field">
         <label class="field__label" for="email">E-mail</label>
         <input id="email" type="email" autocomplete="email" required>
         <span class="field__error"></span>
       </div>
+
+      <!-- Campos do advogado (escondidos pra cliente) -->
+      <div id="advogado-extras" class="hide">
+        <div class="field--row">
+          <div class="field">
+            <label class="field__label" for="oab-num">OAB nº</label>
+            <input id="oab-num" placeholder="123456" autocomplete="off">
+            <span class="field__error"></span>
+          </div>
+          <div class="field">
+            <label class="field__label" for="oab-uf">UF</label>
+            <select id="oab-uf">
+              <option value="">UF</option>
+            </select>
+            <span class="field__error"></span>
+          </div>
+        </div>
+        <div class="field">
+          <label class="field__label" for="banca">Escritório / banca (opcional)</label>
+          <input id="banca" placeholder="Ex.: Nogueira Advogados">
+        </div>
+      </div>
+
       <div class="field">
         <label class="field__label" for="senha">Crie uma senha</label>
         <input id="senha" type="password" autocomplete="new-password" required>
@@ -88,7 +138,49 @@
       return;
     }
 
+    // Preencher dropdown de UFs
+    const ufSel = document.getElementById("oab-uf");
+    App.UFS.forEach(uf => {
+      const o = document.createElement("option");
+      o.value = uf; o.textContent = uf;
+      ufSel.appendChild(o);
+    });
+
+    let chosenRole = null;
+    const stepRole = document.getElementById("step-role");
+    const stepForm = document.getElementById("step-form");
+    const advExtras = document.getElementById("advogado-extras");
+    const oabNum = document.getElementById("oab-num");
+
+    document.querySelectorAll(".role-choice").forEach(btn => {
+      btn.addEventListener("click", () => {
+        chosenRole = btn.dataset.role;
+        stepRole.classList.add("hide");
+        stepForm.classList.remove("hide");
+        if (chosenRole === "advogado") {
+          advExtras.classList.remove("hide");
+          oabNum.required = true;
+          ufSel.required = true;
+          document.getElementById("form-title").textContent = "Cadastro de advogado(a)";
+          document.getElementById("form-subtitle").textContent = "Mais 30 segundos e você pode começar a antecipar honorários.";
+        } else {
+          advExtras.classList.add("hide");
+          oabNum.required = false;
+          ufSel.required = false;
+          document.getElementById("form-title").textContent = "Criar minha conta";
+          document.getElementById("form-subtitle").textContent = "Leva 1 minuto. Sem cobrança e sem compromisso.";
+        }
+      });
+    });
+
+    document.getElementById("btn-trocar-role").onclick = () => {
+      stepForm.classList.add("hide");
+      stepRole.classList.remove("hide");
+      chosenRole = null;
+    };
+
     App.bindMask(document.getElementById("tel"), App.maskPhone);
+    App.bindMask(oabNum, App.maskOAB);
 
     const form = document.getElementById("signup-form");
     const errBox = document.getElementById("signup-error");
@@ -98,14 +190,16 @@
       e.preventDefault();
       errBox.classList.add("hide");
 
-      const nome  = document.getElementById("nome");
-      const tel   = document.getElementById("tel");
-      const email = document.getElementById("email");
-      const senha = document.getElementById("senha");
+      const nome   = document.getElementById("nome");
+      const tel    = document.getElementById("tel");
+      const email  = document.getElementById("email");
+      const senha  = document.getElementById("senha");
       const termos = document.getElementById("termos");
       const whatsapp = document.getElementById("whatsapp");
 
       [nome, email, senha].forEach(i => App.setFieldError(i, ""));
+      App.setFieldError(oabNum, "");
+      App.setFieldError(ufSel, "");
 
       let ok = true;
       if (!nome.value.trim() || nome.value.trim().split(" ").length < 2) {
@@ -116,6 +210,14 @@
       }
       if (senha.value.length < 8) {
         App.setFieldError(senha, "Mínimo de 8 caracteres."); ok = false;
+      }
+      if (chosenRole === "advogado") {
+        if (!oabNum.value.trim()) {
+          App.setFieldError(oabNum, "Informe o número da OAB."); ok = false;
+        }
+        if (!App.isValidUF(ufSel.value)) {
+          App.setFieldError(ufSel, "Selecione a UF."); ok = false;
+        }
       }
       if (!termos.checked) ok = false;
       if (!ok) return;
@@ -128,8 +230,10 @@
           email: email.value,
           telefone: tel.value,
           senha: senha.value,
+          role: chosenRole,
           whatsappOptIn: whatsapp.checked,
         });
+
         if (result.needsEmailConfirmation) {
           form.innerHTML = `
             <div class="alert alert--success">
@@ -142,11 +246,25 @@
             </div>
             <a href="login.html" class="btn btn--ghost btn--block mt-2">Ir para o login</a>
           `;
-        } else {
-          window.location.href = "app/dashboard.html";
+          return;
         }
+
+        // Se advogado, criar/atualizar o registro em `advogados` com OAB
+        if (chosenRole === "advogado") {
+          // Esperar um pouquinho pra garantir que o trigger handle_new_user já rodou
+          // (idealmente a Supabase faz isso síncrono — usamos isso como margem de segurança)
+          await Pessoas.getCurrent();
+          await Advogados.upsertForCurrent({
+            oabNumero: oabNum.value.trim(),
+            oabEstado: ufSel.value.toUpperCase(),
+            banca: document.getElementById("banca").value.trim() || null,
+          });
+        }
+
+        window.location.href = "app/dashboard.html";
       } catch (err) {
-        errBox.textContent = err.message;
+        console.error(err);
+        errBox.textContent = err.message || String(err);
         errBox.classList.remove("hide");
         submitBtn.disabled = false;
         submitBtn.textContent = "Criar conta";
