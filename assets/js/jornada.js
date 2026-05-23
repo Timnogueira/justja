@@ -634,8 +634,8 @@ const Jornada = (() => {
         </div>
 
         <div class="field">
-          <label class="field__label" for="advogado">Seu advogado(a) — nome e OAB</label>
-          <input id="advogado" placeholder="Nome completo + UF/00000" value="${proc.advogadoTexto || ""}">
+          <label class="field__label" for="advogado">Nome do(a) seu(sua) advogado(a)</label>
+          <input id="advogado" placeholder="Nome completo" value="${proc.advogadoTexto || ""}">
           <span class="field__hint">Para que possamos contatá-lo(a) sobre a cessão. Opcional nesta etapa.</span>
         </div>
 
