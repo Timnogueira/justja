@@ -32,7 +32,7 @@
   if (!user) return;
 
   try {
-    const pessoa = await Pessoas.getCurrent();
+    const pessoa = await Pessoas.ensureCurrent();
     if (!pessoa) throw new Error("Pessoa não encontrada para esse usuário. Refaça o login.");
 
     const isAdv = pessoa.role === "advogado";

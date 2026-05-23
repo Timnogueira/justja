@@ -85,7 +85,7 @@
 (async () => {
   const user = await Auth.requireAuth("../login.html");
   if (!user) return;
-  const pessoa = await Pessoas.getCurrent();
+  const pessoa = await Pessoas.ensureCurrent();
 
   document.getElementById("u-name").textContent  = user.nome;
   document.getElementById("u-email").textContent = user.email;

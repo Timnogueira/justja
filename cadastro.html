@@ -249,11 +249,11 @@
           return;
         }
 
-        // Se advogado, criar/atualizar o registro em `advogados` com OAB
+        // Garante que a pessoa exista (cria se o trigger não rodou)
+        await Pessoas.ensureCurrent();
+
+        // Se advogado, cria/atualiza o registro em `advogados` com OAB
         if (chosenRole === "advogado") {
-          // Esperar um pouquinho pra garantir que o trigger handle_new_user já rodou
-          // (idealmente a Supabase faz isso síncrono — usamos isso como margem de segurança)
-          await Pessoas.getCurrent();
           await Advogados.upsertForCurrent({
             oabNumero: oabNum.value.trim(),
             oabEstado: ufSel.value.toUpperCase(),

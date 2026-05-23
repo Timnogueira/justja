@@ -172,6 +172,37 @@ const Pessoas = (() => {
     return _cache;
   }
 
+  // Pega a pessoa atual; se não existir, cria a partir dos metadados do auth.users.
+  // Útil pra casos onde o trigger handle_new_user não rodou (schema antigo,
+  // contas pré-existentes, race condition no signup, etc.).
+  async function ensureCurrent() {
+    let p = await getCurrent();
+    if (p) return p;
+
+    const sessionUser = Auth.getSession()?.user;
+    if (!sessionUser) return null;
+    const m = sessionUser.user_metadata || {};
+
+    const row = {
+      user_id: sessionUser.id,
+      nome: m.nome || (sessionUser.email || "").split("@")[0],
+      email: sessionUser.email,
+      cpf_cnpj: m.cpf || null,
+      telefone: m.telefone || null,
+      role: m.role || "cliente",
+      whatsapp_opt_in: !!m.whatsapp_opt_in,
+      whatsapp_opt_in_at: m.whatsapp_opt_in ? new Date().toISOString() : null,
+    };
+    const { data, error } = await _db()
+      .from("pessoas").insert(row).select().single();
+    if (error) {
+      console.error("Pessoas.ensureCurrent insert", error);
+      throw new Error("Não consegui criar seu perfil: " + (error.message || error));
+    }
+    _cache = _rowToObj(data);
+    return _cache;
+  }
+
   function invalidate() { _cache = null; }
 
   async function updateCurrent(patch) {
@@ -191,7 +222,7 @@ const Pessoas = (() => {
     return _rowToObj(data);
   }
 
-  return { getCurrent, updateCurrent, getById, invalidate };
+  return { getCurrent, ensureCurrent, updateCurrent, getById, invalidate };
 })();
 window.Pessoas = Pessoas;
 
