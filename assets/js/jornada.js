@@ -455,24 +455,64 @@ const Jornada = (() => {
             </div>
           </form>
         `;
+        const submitBtn = document.querySelector("#form-upload button[type=submit]");
         document.getElementById("form-upload").onsubmit = async (e) => {
           e.preventDefault();
           const file = document.getElementById("comprovante").files[0];
-          proc.protocolacao = {
-            comprovanteEnviado: true,
-            comprovanteNome: file ? file.name : "comprovante.pdf",
-            comprovanteTamanho: file ? file.size : 0,
-            protocoladoPor: document.getElementById("protocolado-por").value,
-            numeroProtocolo: document.getElementById("numero-protocolo").value,
-            enviadoEm: new Date().toISOString(),
-            // mock prazos (em produção vêm do backend)
-            prazoAnaliseHoras: 24,
-            prazoPagamentoHoras: 24,
-          };
-          // pagamento entra na "fila" / "carrinho"
-          proc.pagamentoStatus = "no_carrinho";
-          await saveProcesso(proc);
-          render(proc);
+          if (!file) return;
+          if (file.size > 10 * 1024 * 1024) {
+            alert("Arquivo muito grande (máximo 10 MB).");
+            return;
+          }
+
+          submitBtn.disabled = true;
+          submitBtn.textContent = "Enviando…";
+
+          try {
+            // Upload pro bucket "comprovantes"
+            // Path: <user_id>/<processo_id>/<timestamp>-<nome-do-arquivo>
+            const userId = Auth.currentUser().id;
+            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+            const path = `${userId}/${proc.id}/${Date.now()}-${safeName}`;
+
+            const { error: upErr } = await Auth.client()
+              .storage
+              .from("comprovantes")
+              .upload(path, file, {
+                cacheControl: "3600",
+                upsert: false,
+                contentType: file.type || "application/octet-stream",
+              });
+            if (upErr) throw upErr;
+
+            // Gera signed URL válida por 1 ano (bucket é privado)
+            const { data: signed, error: signErr } = await Auth.client()
+              .storage
+              .from("comprovantes")
+              .createSignedUrl(path, 60 * 60 * 24 * 365);
+            if (signErr) throw signErr;
+
+            proc.protocolacao = {
+              comprovanteEnviado: true,
+              comprovanteNome: file.name,
+              comprovanteTamanho: file.size,
+              comprovantePath: path,
+              comprovanteUrl: signed.signedUrl,
+              protocoladoPor: document.getElementById("protocolado-por").value,
+              numeroProtocolo: document.getElementById("numero-protocolo").value,
+              enviadoEm: new Date().toISOString(),
+              prazoAnaliseHoras: 24,
+              prazoPagamentoHoras: 24,
+            };
+            proc.pagamentoStatus = "no_carrinho";
+            await saveProcesso(proc);
+            render(proc);
+          } catch (err) {
+            console.error("Upload falhou:", err);
+            alert("Falha no upload: " + (err.message || err));
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Enviar comprovante →";
+          }
         };
       } else {
         const p = proc.protocolacao;
@@ -483,8 +523,8 @@ const Jornada = (() => {
           <div class="card mt-3" style="background: linear-gradient(135deg, var(--success-100), #fff); border-color: #86efac;">
             <h3>Status do seu pedido</h3>
             <ul style="font-size:.95rem;">
-              <li>✅ <strong>Comprovante recebido</strong> em ${App.fmtDate(p.enviadoEm)} — arquivo: <code>${p.comprovanteNome}</code></li>
-              <li>🔄 <strong>Análise do comprovante:</strong> em até <strong>${p.prazoAnaliseHoras} horas úteis</strong></li>
+              <li>✅ <strong>Comprovante recebido</strong> em ${App.fmtDate(p.enviadoEm)} — arquivo: <code>${p.comprovanteNome}</code>${p.comprovanteUrl ? ` (<a href="${p.comprovanteUrl}" target="_blank" rel="noopener">ver arquivo</a>)` : ""}</li>
+              <li>🔄 <strong>Análise do comprovante:</strong> em até <strong>${p.prazoAnaliseHoras} horas</strong></li>
               <li>💰 <strong>Liberação do pagamento:</strong> em até <strong>${p.prazoPagamentoHoras} horas</strong> após validação</li>
             </ul>
           </div>
