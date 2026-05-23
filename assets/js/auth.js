@@ -65,7 +65,7 @@ const Auth = (() => {
     return _initPromise;
   }
 
-  async function signup({ nome, email, cpf, telefone, senha }) {
+  async function signup({ nome, email, cpf, telefone, senha, whatsappOptIn }) {
     email = (email || "").trim().toLowerCase();
     if (!email || !senha || !nome) throw new Error("Preencha nome, e-mail e senha.");
     if (senha.length < 8) throw new Error("Senha deve ter ao menos 8 caracteres.");
@@ -76,8 +76,10 @@ const Auth = (() => {
       options: {
         data: {
           nome: nome.trim(),
-          cpf: (cpf || "").replace(/\D/g, ""),
-          telefone: (telefone || "").replace(/\D/g, ""),
+          cpf: (cpf || "").replace(/\D/g, "") || null,
+          telefone: (telefone || "").replace(/\D/g, "") || null,
+          whatsapp_opt_in: !!whatsappOptIn,
+          whatsapp_opt_in_at: whatsappOptIn ? new Date().toISOString() : null,
         },
       },
     });

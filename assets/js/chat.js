@@ -170,7 +170,7 @@
     await new Promise(r => setTimeout(r, 800 + Math.random() * 600));
     const last = (messages[messages.length - 1]?.text || "").toLowerCase();
     if (/(prazo|quanto tempo|demora)/.test(last)) {
-      return "A análise inicial leva de poucos minutos a 24h úteis. Após a assinatura do contrato e o envio do comprovante de protocolação, o PIX cai em até 2 horas úteis.";
+      return "A análise inicial leva de poucos minutos a 24h úteis. Após a assinatura do contrato e o envio do comprovante de protocolação, o PIX cai em até 24 horas.";
     }
     if (/(valor|quanto|recebo|porcentagem|%)/.test(last)) {
       return "O valor exato depende do tipo do processo e da fase em que ele está. A melhor forma de saber é fazer uma simulação rápida aqui no site — leva 30 segundos e não precisa de cadastro.";

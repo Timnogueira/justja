@@ -13,7 +13,7 @@
 const Jornada = (() => {
   const ESTAGIOS = [
     { id: "cadastro",        label: "Cadastro" },
-    { id: "consultaAnalise", label: "Consulta e Análise" },
+    { id: "consultaAnalise", label: "Análise" },
     { id: "oferta",          label: "Oferta" },
     { id: "assinatura",      label: "Assinatura" },
     { id: "protocolacao",    label: "Protocolação" },
@@ -471,7 +471,7 @@ const Jornada = (() => {
             enviadoEm: new Date().toISOString(),
             // mock prazos (em produção vêm do backend)
             prazoAnaliseHoras: 24,
-            prazoPagamentoHoras: 48,
+            prazoPagamentoHoras: 24,
           };
           // pagamento entra na "fila" / "carrinho"
           proc.pagamentoStatus = "no_carrinho";
@@ -489,7 +489,7 @@ const Jornada = (() => {
             <ul style="font-size:.95rem;">
               <li>✅ <strong>Comprovante recebido</strong> em ${App.fmtDate(p.enviadoEm)} — arquivo: <code>${p.comprovanteNome}</code></li>
               <li>🔄 <strong>Análise do comprovante:</strong> em até <strong>${p.prazoAnaliseHoras} horas úteis</strong></li>
-              <li>💰 <strong>Liberação do pagamento:</strong> em até <strong>${p.prazoPagamentoHoras} horas úteis</strong> após validação</li>
+              <li>💰 <strong>Liberação do pagamento:</strong> em até <strong>${p.prazoPagamentoHoras} horas</strong> após validação</li>
             </ul>
           </div>
 
@@ -549,7 +549,7 @@ const Jornada = (() => {
               <tr><td class="muted">Valor a receber:</td><td><strong>${App.fmtBRL(valor)}</strong></td></tr>
               <tr><td class="muted">Modalidade:</td><td>${proc.escolhaCessao === "integral" ? "Cessão integral" : "Só a sua parte"}</td></tr>
               <tr><td class="muted">Status:</td><td><span class="badge badge--warn">No carrinho — aguardando validação</span></td></tr>
-              <tr><td class="muted">Previsão de pagamento:</td><td>até ${proc.protocolacao?.prazoPagamentoHoras || 48}h úteis após validação</td></tr>
+              <tr><td class="muted">Previsão de pagamento:</td><td>até ${proc.protocolacao?.prazoPagamentoHoras || 24}h após validação</td></tr>
             </table>
           </div>
           <div class="journey-actions">
@@ -572,11 +572,10 @@ const Jornada = (() => {
 
   function renderConsultaForm(target, proc) {
     target.innerHTML = `
-      <h2>Vamos consultar o seu processo</h2>
+      <h2>Vamos analisar o seu processo</h2>
       <p class="muted">
-        Precisamos do número do processo e da sua autorização para consultar os andamentos junto ao
-        <strong>DJEN/CNJ</strong> e <strong>DataJud</strong>. Nenhum dado pessoal é exposto — usamos
-        apenas as informações públicas do processo.
+        Precisamos do número do processo e da sua autorização para consultar os andamentos
+        nos sistemas públicos do tribunal. Nenhum dado pessoal é exposto.
       </p>
 
       <form class="form mt-3" id="form-consulta">
@@ -584,6 +583,12 @@ const Jornada = (() => {
           <label class="field__label" for="cnj">Número do processo (CNJ)</label>
           <input id="cnj" placeholder="0000000-00.0000.0.00.0000" value="${proc.numeroCnj || ""}" required>
           <span class="field__hint">Você encontra esse número na intimação ou com seu advogado.</span>
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="cpf-consulta">Seu CPF</label>
+          <input id="cpf-consulta" placeholder="000.000.000-00" value="${proc.cpfTitular || ""}" required>
+          <span class="field__hint">Necessário para confirmar que você é parte do processo.</span>
         </div>
 
         <div class="field">
@@ -596,13 +601,13 @@ const Jornada = (() => {
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7v6c0 5 4 9 10 11 6-2 10-6 10-11V7l-10-5z"/></svg>
           <div>
             <strong>Autorização de consulta</strong><br>
-            Ao continuar, você autoriza a Just Já a consultar os andamentos do processo nos sistemas
-            públicos do CNJ (DJEN, DataJud) com a única finalidade de avaliar a viabilidade da antecipação.
-            Nenhum dado é compartilhado com terceiros. Veja nossa
+            Ao continuar, você autoriza a Just Já a consultar os andamentos do seu processo nos sistemas
+            públicos do tribunal, com a única finalidade de avaliar a viabilidade da antecipação. Nenhum
+            dado é compartilhado com terceiros. Veja nossa
             <a href="../privacidade.html" target="_blank" style="color:inherit; text-decoration:underline;">política de privacidade</a>.
             <label class="checkbox" style="margin-top:12px;">
               <input type="checkbox" id="autorizo" required>
-              <span>Eu autorizo a consulta nos sistemas públicos do CNJ e declaro que sou parte legítima neste processo.</span>
+              <span>Eu autorizo a consulta ao meu processo e declaro que sou parte legítima nele.</span>
             </label>
           </div>
         </div>
@@ -614,12 +619,14 @@ const Jornada = (() => {
       </form>
     `;
     App.bindMask(document.getElementById("cnj"), App.maskCNJ);
+    App.bindMask(document.getElementById("cpf-consulta"), App.maskCPF);
     document.getElementById("btn-back").onclick = () => advance(proc, "cadastro");
 
     document.getElementById("form-consulta").onsubmit = (e) => {
       e.preventDefault();
       if (!document.getElementById("autorizo").checked) return;
       proc.numeroCnj = document.getElementById("cnj").value;
+      proc.cpfTitular = document.getElementById("cpf-consulta").value;
       proc.advogadoTexto = document.getElementById("advogado").value;
       proc.autorizouConsulta = true;
       proc.autorizadoEm = new Date().toISOString();
@@ -633,16 +640,16 @@ const Jornada = (() => {
     target.innerHTML = `
       <h2>Analisando o seu processo</h2>
       <p class="muted">
-        Nossa inteligência está lendo os andamentos do processo, identificando a fase atual,
+        Estamos consultando os andamentos do processo, identificando a fase atual,
         decisões já proferidas e calculando o valor base da causa.
       </p>
       <div class="spinner"></div>
-      <div class="loading-text" id="loading-msg">Conectando ao DJEN/CNJ…</div>
+      <div class="loading-text" id="loading-msg">Consultando o seu processo…</div>
     `;
     const msgs = [
-      "Conectando ao DJEN/CNJ…",
-      "Buscando andamentos no DataJud…",
-      "Lendo decisões e despachos…",
+      "Consultando o seu processo…",
+      "Lendo os últimos andamentos…",
+      "Identificando decisões e despachos…",
       "Identificando a fase processual atual…",
       "Calculando o valor base da causa…",
       "Estimando a classe de risco…",

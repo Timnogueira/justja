@@ -43,16 +43,9 @@
         <input id="nome" autocomplete="name" required>
         <span class="field__error"></span>
       </div>
-      <div class="field--row">
-        <div class="field">
-          <label class="field__label" for="cpf">CPF</label>
-          <input id="cpf" inputmode="numeric" placeholder="000.000.000-00" autocomplete="off" required>
-          <span class="field__error"></span>
-        </div>
-        <div class="field">
-          <label class="field__label" for="tel">Telefone</label>
-          <input id="tel" inputmode="tel" placeholder="(00) 00000-0000" autocomplete="tel">
-        </div>
+      <div class="field">
+        <label class="field__label" for="tel">Telefone (WhatsApp)</label>
+        <input id="tel" inputmode="tel" placeholder="(00) 00000-0000" autocomplete="tel" required>
       </div>
       <div class="field">
         <label class="field__label" for="email">E-mail</label>
@@ -67,11 +60,11 @@
       </div>
       <label class="checkbox">
         <input type="checkbox" id="termos" required>
-        <span>Li e concordo com os <a href="#">Termos de Uso</a> e a <a href="#">Política de Privacidade</a>.</span>
+        <span>Li e concordo com os <a href="privacidade.html">Termos de Uso</a> e a <a href="privacidade.html">Política de Privacidade</a>.</span>
       </label>
       <label class="checkbox">
-        <input type="checkbox" id="lgpd" required>
-        <span>Autorizo a Just Já a tratar meus dados pessoais conforme a LGPD, exclusivamente para a operação de antecipação de processos.</span>
+        <input type="checkbox" id="whatsapp">
+        <span>Quero receber mensagens da Just Já no WhatsApp sobre o andamento do meu cadastro, propostas e processos. (Opcional — você pode cancelar a qualquer momento.)</span>
       </label>
 
       <div id="signup-error" class="alert alert--danger hide"></div>
@@ -95,7 +88,6 @@
       return;
     }
 
-    App.bindMask(document.getElementById("cpf"), App.maskCPF);
     App.bindMask(document.getElementById("tel"), App.maskPhone);
 
     const form = document.getElementById("signup-form");
@@ -107,21 +99,17 @@
       errBox.classList.add("hide");
 
       const nome  = document.getElementById("nome");
-      const cpf   = document.getElementById("cpf");
       const tel   = document.getElementById("tel");
       const email = document.getElementById("email");
       const senha = document.getElementById("senha");
       const termos = document.getElementById("termos");
-      const lgpd   = document.getElementById("lgpd");
+      const whatsapp = document.getElementById("whatsapp");
 
-      [nome, cpf, email, senha].forEach(i => App.setFieldError(i, ""));
+      [nome, email, senha].forEach(i => App.setFieldError(i, ""));
 
       let ok = true;
       if (!nome.value.trim() || nome.value.trim().split(" ").length < 2) {
         App.setFieldError(nome, "Informe seu nome completo."); ok = false;
-      }
-      if (!App.isValidCPF(cpf.value)) {
-        App.setFieldError(cpf, "CPF inválido."); ok = false;
       }
       if (!App.isValidEmail(email.value)) {
         App.setFieldError(email, "Informe um e-mail válido."); ok = false;
@@ -129,7 +117,7 @@
       if (senha.value.length < 8) {
         App.setFieldError(senha, "Mínimo de 8 caracteres."); ok = false;
       }
-      if (!termos.checked || !lgpd.checked) ok = false;
+      if (!termos.checked) ok = false;
       if (!ok) return;
 
       submitBtn.disabled = true;
@@ -138,9 +126,9 @@
         const result = await Auth.signup({
           nome: nome.value,
           email: email.value,
-          cpf: cpf.value,
           telefone: tel.value,
           senha: senha.value,
+          whatsappOptIn: whatsapp.checked,
         });
         if (result.needsEmailConfirmation) {
           form.innerHTML = `
