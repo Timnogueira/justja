@@ -61,7 +61,7 @@ const Simulador = (() => {
         </div>
         <p class="muted mt-2" style="font-size:.88rem;">
           Esta é uma estimativa preliminar com base no valor declarado e no tipo do processo.
-          A oferta final depende da análise do processo atualizado (consulta DJEN/DataJud + análise por IA).
+          A oferta final depende da análise do processo atualizado.
         </p>
         <div class="mt-2">
           <a href="cadastro.html" class="btn btn--primary">Quero fazer um cadastro</a>
