@@ -366,9 +366,12 @@ const Jornada = (() => {
             <li><strong>${tipoTermo}</strong> — a ser juntado aos autos do processo (cliente + advogado + Just Já)</li>
           </ol>
           <p class="muted" style="font-size:.9rem;">
-            Na versão de produção, os documentos serão assinados eletronicamente com certificado ICP-Brasil
-            ou plataforma equivalente (Clicksign / D4Sign). Aqui na demo, simulamos com a sua confirmação.
+            Antes de assinar, baixe a minuta do termo de cessão abaixo, leia com calma e mostre ao seu advogado.
+            Em produção, a assinatura será eletrônica (certificado ICP-Brasil ou Clicksign / D4Sign).
           </p>
+          <button type="button" class="btn btn--ghost mt-2" id="btn-baixar-minuta">
+            📄 Baixar minuta do termo de cessão (PDF)
+          </button>
         </div>
 
         <form class="form mt-3" id="form-sign">
@@ -391,6 +394,9 @@ const Jornada = (() => {
         </form>
       `;
       document.getElementById("btn-back").onclick = async () => await advance(proc, "oferta");
+      document.getElementById("btn-baixar-minuta").onclick = () => {
+        TermoCessao.gerar(proc, Auth.currentUser());
+      };
       document.getElementById("form-sign").onsubmit = async (e) => {
         e.preventDefault();
         proc.assinatura = {
