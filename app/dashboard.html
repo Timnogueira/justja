@@ -110,8 +110,8 @@
     recusada:        { label: "Recusada",          badge: "badge--danger" },
   };
 
-  function render() {
-    const procs = App.getProcessos(user.email);
+  async function render() {
+    const procs = await App.getProcessos();
     document.getElementById("kpi-total").textContent = procs.length;
     document.getElementById("kpi-analise").textContent = procs.filter(p => p.estagio === "consultaAnalise").length;
     document.getElementById("kpi-oferta").textContent  = procs.filter(p => p.estagio === "oferta").length;
@@ -168,7 +168,7 @@
     `;
   }
 
-  render();
+  await render();
 })();
 </script>
 

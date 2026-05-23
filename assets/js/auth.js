@@ -155,6 +155,7 @@ const Auth = (() => {
   return {
     init, signup, login, logout,
     currentUser, getSession, requireAuth, requireGuest, onChange,
+    client,   // expõe o supabase client pra app.js/jornada.js usarem queries
   };
 })();
 

@@ -1,12 +1,22 @@
 /* ==========================================================================
-   Just Já — utilitários gerais
+   Just Já — utilitários gerais + storage de processos (Supabase Postgres)
+   --------------------------------------------------------------------------
+   Persistência:
+   - getProcessos()        → async, lê processos do usuário logado
+   - getProcesso(id)       → async, lê um processo específico
+   - upsertProcesso(proc)  → async, cria ou atualiza
+   - newId()               → uuid v4 client-side (pra otimização de UI)
+
+   Conversão de campos:
+   - JS:   camelCase  (proc.valorEstimado, proc.numeroCnj, proc.escolhaCessao)
+   - SQL:  snake_case (valor_estimado, numero_cnj, escolha_cessao)
    ========================================================================== */
 
 const App = (() => {
   // ---------- Formatação ----------
   function fmtBRL(v) {
     if (v == null || isNaN(v)) return "R$ 0,00";
-    return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   }
   function parseBRL(str) {
     if (typeof str === "number") return str;
@@ -40,7 +50,6 @@ const App = (() => {
     return s.replace(/(\d{2})(\d)/, "($1) $2").replace(/(\d{5})(\d)/, "$1-$2");
   }
   function maskCNJ(v) {
-    // 0000000-00.0000.0.00.0000
     const s = (v || "").replace(/\D/g, "").slice(0, 20);
     return s
       .replace(/^(\d{7})(\d)/, "$1-$2")
@@ -90,30 +99,115 @@ const App = (() => {
     }
   }
 
-  // ---------- Storage de processos ----------
-  function processStorageKey(userEmail) {
-    return `justja.processos.${userEmail || "anon"}.v1`;
+  // ---------- Conversão camelCase ↔ snake_case ----------
+  // Lista de campos que existem na tabela `processos` (ordem importa só p/ leitura)
+  const ROW_TO_PROC = {
+    id: "id",
+    user_id: "userId",
+    titulo: "titulo",
+    tipo: "tipo",
+    tribunal: "tribunal",
+    numero_cnj: "numeroCnj",
+    valor_estimado: "valorEstimado",
+    descricao: "descricao",
+    cpf_titular: "cpfTitular",
+    advogado_texto: "advogadoTexto",
+    estagio: "estagio",
+    status: "status",
+    estimativa: "estimativa",
+    analise: "analise",
+    oferta: "oferta",
+    escolha_cessao: "escolhaCessao",
+    autorizou_consulta: "autorizouConsulta",
+    autorizado_em: "autorizadoEm",
+    analise_status: "analiseStatus",
+    assinatura: "assinatura",
+    protocolacao: "protocolacao",
+    pagamento_status: "pagamentoStatus",
+    pagamento: "pagamento",
+    historico: "historico",
+    created_at: "createdAt",
+    updated_at: "updatedAt",
+  };
+  const PROC_TO_ROW = Object.fromEntries(
+    Object.entries(ROW_TO_PROC).map(([k, v]) => [v, k])
+  );
+
+  function rowToProc(row) {
+    if (!row) return null;
+    const proc = {};
+    for (const [col, key] of Object.entries(ROW_TO_PROC)) {
+      if (row[col] !== undefined) proc[key] = row[col];
+    }
+    return proc;
   }
-  function getProcessos(userEmail) {
-    try {
-      return JSON.parse(localStorage.getItem(processStorageKey(userEmail)) || "[]");
-    } catch { return []; }
+
+  function procToRow(proc, userId) {
+    const row = {};
+    for (const [key, val] of Object.entries(proc)) {
+      const col = PROC_TO_ROW[key];
+      if (col && col !== "createdAt" && col !== "updatedAt") {
+        row[col] = val;
+      }
+    }
+    if (userId) row.user_id = userId;
+    return row;
   }
-  function saveProcessos(userEmail, list) {
-    localStorage.setItem(processStorageKey(userEmail), JSON.stringify(list));
+
+  // ---------- Storage (Supabase) ----------
+  function db() { return Auth.client(); }
+
+  async function getProcessos() {
+    const user = Auth.currentUser();
+    if (!user) return [];
+    const { data, error } = await db()
+      .from("processos")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("updated_at", { ascending: false });
+    if (error) { console.error("getProcessos", error); return []; }
+    return data.map(rowToProc);
   }
-  function upsertProcesso(userEmail, processo) {
-    const list = getProcessos(userEmail);
-    const i = list.findIndex(p => p.id === processo.id);
-    if (i >= 0) list[i] = { ...list[i], ...processo, updatedAt: new Date().toISOString() };
-    else list.push({ ...processo, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-    saveProcessos(userEmail, list);
-    return processo;
+
+  async function getProcesso(id) {
+    if (!id) return null;
+    const { data, error } = await db()
+      .from("processos")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+    if (error) { console.error("getProcesso", error); return null; }
+    return rowToProc(data);
   }
-  function getProcesso(userEmail, id) {
-    return getProcessos(userEmail).find(p => p.id === id) || null;
+
+  async function upsertProcesso(proc) {
+    const user = Auth.currentUser();
+    if (!user) throw new Error("Usuário não autenticado.");
+    const row = procToRow(proc, user.id);
+    const { data, error } = await db()
+      .from("processos")
+      .upsert(row, { onConflict: "id" })
+      .select()
+      .single();
+    if (error) { console.error("upsertProcesso", error, row); throw error; }
+    return rowToProc(data);
   }
-  function newId() { return "proc-" + Math.random().toString(36).slice(2, 10); }
+
+  async function deleteProcesso(id) {
+    const { error } = await db().from("processos").delete().eq("id", id);
+    if (error) throw error;
+  }
+
+  function newId() {
+    // UUID v4 — Postgres aceita uuid em texto também
+    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+    // fallback
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0;
+      const v = c === "x" ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
 
   // ---------- Navbar mobile toggle ----------
   function bindNav() {
@@ -130,7 +224,7 @@ const App = (() => {
     maskCPF, maskPhone, maskCNJ, maskMoney,
     isValidCPF, isValidEmail,
     bindMask, setFieldError,
-    getProcessos, saveProcessos, upsertProcesso, getProcesso, newId,
+    getProcessos, getProcesso, upsertProcesso, deleteProcesso, newId,
   };
 })();
 

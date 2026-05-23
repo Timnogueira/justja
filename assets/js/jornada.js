@@ -59,25 +59,25 @@ const Jornada = (() => {
     return new URL(window.location.href).searchParams.get("id");
   }
 
-  function loadProcesso() {
+  async function loadProcesso() {
     const user = Auth.currentUser();
     if (!user) return null;
     const id = getQueryProcId();
     if (!id) return null;
-    return App.getProcesso(user.email, id);
+    return await App.getProcesso(id);
   }
 
-  function saveProcesso(proc) {
+  async function saveProcesso(proc) {
     const user = Auth.currentUser();
     if (!user) return;
-    App.upsertProcesso(user.email, proc);
+    return await App.upsertProcesso(proc);
   }
 
-  function advance(proc, nextStage) {
+  async function advance(proc, nextStage) {
     proc.estagio = nextStage;
     proc.historico = proc.historico || [];
     proc.historico.push({ estagio: nextStage, at: new Date().toISOString() });
-    saveProcesso(proc);
+    await saveProcesso(proc);
     window.location.href = `jornada.html?id=${proc.id}&stage=${nextStage}`;
   }
 
@@ -182,7 +182,7 @@ const Jornada = (() => {
         }
       });
 
-      document.getElementById("form-cadastro").onsubmit = (e) => {
+      document.getElementById("form-cadastro").onsubmit = async (e) => {
         e.preventDefault();
         const titulo = document.getElementById("c-titulo").value.trim();
         const tipo   = document.getElementById("c-tipo").value;
@@ -197,10 +197,8 @@ const Jornada = (() => {
         proc.valorEstimado = valor;
         proc.tribunal = tribunal;
         proc.descricao = descricao;
-        // estimativa preliminar (placeholder do motor de pricing)
         proc.estimativa = Simulador.estimar({ valor, tipo });
-        saveProcesso(proc);
-        advance(proc, "consultaAnalise");
+        await advance(proc, "consultaAnalise");
       };
     },
 
@@ -312,27 +310,26 @@ const Jornada = (() => {
 
       // Seleção de cartões (radio visual)
       target.querySelectorAll('input[name="escolha"]').forEach(r => {
-        r.addEventListener("change", () => {
+        r.addEventListener("change", async () => {
           proc.escolhaCessao = r.value;
-          saveProcesso(proc);
+          await saveProcesso(proc);
           render(proc);
         });
       });
 
-      document.getElementById("btn-aceitar").onclick = () => {
+      document.getElementById("btn-aceitar").onclick = async () => {
         proc.escolhaCessao = proc.escolhaCessao || "integral";
         proc.oferta.valorAntecipadoFinal = proc.escolhaCessao === "integral"
           ? ofertaIntegral : ofertaParcial;
-        saveProcesso(proc);
-        advance(proc, "assinatura");
+        await advance(proc, "assinatura");
       };
       document.getElementById("btn-revisar").onclick = () => {
         alert("Pedido de revisão registrado. Nosso time entrará em contato em até 1 dia útil.");
       };
-      document.getElementById("btn-recusar").onclick = () => {
+      document.getElementById("btn-recusar").onclick = async () => {
         if (confirm("Tem certeza que quer recusar a proposta?")) {
           proc.estagio = "recusada";
-          saveProcesso(proc);
+          await saveProcesso(proc);
           window.location.href = "dashboard.html";
         }
       };
@@ -393,8 +390,8 @@ const Jornada = (() => {
           </div>
         </form>
       `;
-      document.getElementById("btn-back").onclick = () => advance(proc, "oferta");
-      document.getElementById("form-sign").onsubmit = (e) => {
+      document.getElementById("btn-back").onclick = async () => await advance(proc, "oferta");
+      document.getElementById("form-sign").onsubmit = async (e) => {
         e.preventDefault();
         proc.assinatura = {
           nome: document.getElementById("nome-completo").value,
@@ -403,8 +400,7 @@ const Jornada = (() => {
           hash: "mock-hash-" + Math.random().toString(36).slice(2, 12),
           tipoTermo,
         };
-        saveProcesso(proc);
-        advance(proc, "protocolacao");
+        await advance(proc, "protocolacao");
       };
     },
 
@@ -459,7 +455,7 @@ const Jornada = (() => {
             </div>
           </form>
         `;
-        document.getElementById("form-upload").onsubmit = (e) => {
+        document.getElementById("form-upload").onsubmit = async (e) => {
           e.preventDefault();
           const file = document.getElementById("comprovante").files[0];
           proc.protocolacao = {
@@ -475,8 +471,8 @@ const Jornada = (() => {
           };
           // pagamento entra na "fila" / "carrinho"
           proc.pagamentoStatus = "no_carrinho";
-          saveProcesso(proc);
-          render(proc); // re-render mostrando estado "recebido"
+          await saveProcesso(proc);
+          render(proc);
         };
       } else {
         const p = proc.protocolacao;
@@ -506,7 +502,7 @@ const Jornada = (() => {
             <a href="dashboard.html" class="btn btn--ghost">Voltar ao painel</a>
           </div>
         `;
-        document.getElementById("btn-pgto").onclick = () => advance(proc, "pagamento");
+        document.getElementById("btn-pgto").onclick = async () => await advance(proc, "pagamento");
       }
     },
 
@@ -557,11 +553,11 @@ const Jornada = (() => {
             <a href="dashboard.html" class="btn btn--ghost">Voltar ao painel</a>
           </div>
         `;
-        document.getElementById("btn-simular-pago").onclick = () => {
+        document.getElementById("btn-simular-pago").onclick = async () => {
           proc.pagamentoStatus = "pago";
           proc.pagamento = { pagoEm: new Date().toISOString(), valor };
           proc.status = "concluido";
-          saveProcesso(proc);
+          await saveProcesso(proc);
           render(proc);
         };
       }
@@ -620,9 +616,9 @@ const Jornada = (() => {
     `;
     App.bindMask(document.getElementById("cnj"), App.maskCNJ);
     App.bindMask(document.getElementById("cpf-consulta"), App.maskCPF);
-    document.getElementById("btn-back").onclick = () => advance(proc, "cadastro");
+    document.getElementById("btn-back").onclick = async () => await advance(proc, "cadastro");
 
-    document.getElementById("form-consulta").onsubmit = (e) => {
+    document.getElementById("form-consulta").onsubmit = async (e) => {
       e.preventDefault();
       if (!document.getElementById("autorizo").checked) return;
       proc.numeroCnj = document.getElementById("cnj").value;
@@ -631,7 +627,7 @@ const Jornada = (() => {
       proc.autorizouConsulta = true;
       proc.autorizadoEm = new Date().toISOString();
       proc.analiseStatus = "processando";
-      saveProcesso(proc);
+      await saveProcesso(proc);
       render(proc);
     };
   }
@@ -700,15 +696,16 @@ const Jornada = (() => {
         geradaEm: new Date().toISOString(),
       };
 
-      if (isAsyncAnalise(proc)) {
-        proc.analiseStatus = "aguardando_async";
-        saveProcesso(proc);
-        render(proc);
-      } else {
-        proc.analiseStatus = "concluida";
-        saveProcesso(proc);
-        advance(proc, "oferta");
-      }
+      (async () => {
+        if (isAsyncAnalise(proc)) {
+          proc.analiseStatus = "aguardando_async";
+          await saveProcesso(proc);
+          render(proc);
+        } else {
+          proc.analiseStatus = "concluida";
+          await advance(proc, "oferta");
+        }
+      })();
     }, 4800);
   }
 
@@ -740,10 +737,9 @@ const Jornada = (() => {
         <button class="btn btn--ghost" id="btn-simular-pronto">[demo] Simular notificação recebida</button>
       </div>
     `;
-    document.getElementById("btn-simular-pronto").onclick = () => {
+    document.getElementById("btn-simular-pronto").onclick = async () => {
       proc.analiseStatus = "concluida";
-      saveProcesso(proc);
-      advance(proc, "oferta");
+      await advance(proc, "oferta");
     };
   }
 

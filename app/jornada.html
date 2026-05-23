@@ -78,7 +78,7 @@
   document.getElementById("u-email").textContent = user.email;
   document.getElementById("btn-logout").onclick = () => Auth.logout("../login.html");
 
-  const proc = Jornada.loadProcesso();
+  const proc = await Jornada.loadProcesso();
   if (!proc) {
     document.getElementById("journey-stepper").classList.add("hide");
     document.getElementById("journey-content").classList.add("hide");

@@ -43,8 +43,21 @@
     status: "ativo",
     historico: [{ estagio: "cadastro", at: new Date().toISOString() }],
   };
-  App.upsertProcesso(user.email, proc);
-  window.location.href = `jornada.html?id=${proc.id}&stage=cadastro`;
+  try {
+    const saved = await App.upsertProcesso(proc);
+    window.location.href = `jornada.html?id=${saved.id}&stage=cadastro`;
+  } catch (err) {
+    console.error(err);
+    document.querySelector(".auth__card").innerHTML = `
+      <div class="alert alert--danger">
+        <div>
+          <strong>Erro ao iniciar processo:</strong> ${err.message || err}<br><br>
+          Verifique se a tabela <code>processos</code> foi criada no Supabase (rode o SQL em <code>supabase-schema.sql</code>).
+        </div>
+      </div>
+      <a href="dashboard.html" class="btn btn--ghost btn--block mt-2">Voltar ao painel</a>
+    `;
+  }
 })();
 </script>
 
