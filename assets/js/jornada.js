@@ -447,18 +447,34 @@ const Jornada = (() => {
         TermoCessao.gerar(procLikeParaPDF, Auth.currentUser());
       };
       document.getElementById("btn-back").onclick = async () => await advance(op, "oferta");
-      document.getElementById("form-sign").onsubmit = async (e) => {
+
+      const formSign = document.getElementById("form-sign");
+      const signBtn = formSign.querySelector("button[type=submit]");
+      formSign.onsubmit = async (e) => {
         e.preventDefault();
         const nome = document.getElementById("nome-completo").value;
-        await Assinaturas.create({
-          operacaoId: op.id,
-          ofertaId: oferta.id,
-          role: "cedente",
-          nomeDigitado: nome,
-          ip: "client-side",
-          hash: "demo-" + Math.random().toString(36).slice(2, 12),
-        });
-        await advance(op, "protocolacao");
+        signBtn.disabled = true;
+        signBtn.textContent = "Assinando…";
+        try {
+          await Assinaturas.create({
+            operacaoId: op.id,
+            ofertaId: oferta.id,
+            role: isAdvogado(op) ? "advogado_anuente" : "cedente",
+            nomeDigitado: nome,
+            ip: "client-side",
+            hash: "demo-" + Math.random().toString(36).slice(2, 12),
+          });
+          await advance(op, "protocolacao");
+        } catch (err) {
+          console.error("Erro ao assinar:", err);
+          const box = document.createElement("div");
+          box.className = "alert alert--danger mt-2";
+          box.innerHTML = `<div><strong>Erro ao assinar:</strong> ${err.message || err}<br>
+            Se você é a equipe vendo a jornada de um cliente, a assinatura precisa ser feita pela conta do próprio cliente.</div>`;
+          formSign.appendChild(box);
+          signBtn.disabled = false;
+          signBtn.textContent = "Assinar contrato →";
+        }
       };
     },
 
