@@ -1,13 +1,20 @@
-# Just Já — Plataforma de antecipação de pequenas causas cíveis (MVP B2C)
+# Just Já — Plataforma de antecipação de pequenas causas cíveis (MVP)
 
-Site estático (HTML + CSS + JS vanilla) com **autenticação real via Supabase**.
-Apresenta a plataforma, captação de leads e simulação da jornada completa
-de antecipação de processo judicial pela ótica do **cliente final** (pessoa física).
+Site estático (HTML + CSS + JS vanilla) com **autenticação e dados reais via Supabase**.
+Cobre: landing pública, jornada do **cliente** e do **advogado**, e um **backoffice** interno.
 
-> **Versão atual:** v0.3 — auth real (Supabase), dados de processos ainda em
-> `localStorage` (cada usuário só vê os seus na máquina dele).
+> **Versão atual:** v0.4 — Supabase Auth + Postgres + Storage, duas jornadas
+> (cliente / advogado), geração de termo de cessão em PDF, e backoffice (kanban + ações).
 >
 > A pasta do projeto se chama `strategi-site/` por motivos históricos; o produto é **Just Já**.
+
+## ⚡ Ordem dos SQLs (rodar no Supabase → SQL Editor)
+
+1. **`supabase-schema.sql`** — tabelas (pessoas, advogados, processos, operacoes, ofertas, assinaturas) + RLS + trigger de signup. **Destrutivo** (dropa e recria).
+2. **`supabase-storage.sql`** *(ver abaixo / no histórico de chat)* — bucket `comprovantes` + policies. (Comando único: `insert into storage.buckets ...` + policies.)
+3. **`supabase-admin.sql`** — papel `operador`, `is_staff()`, policies de staff, coluna `notas_internas`. Depois rode o `update ... set role='admin'` pra se tornar admin.
+
+Credenciais já preenchidas em `assets/js/config.js`.
 
 ---
 
