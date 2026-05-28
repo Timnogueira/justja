@@ -737,14 +737,23 @@ const Jornada = (() => {
       submitBtnConsulta.textContent = "Iniciando análise…";
 
       try {
-        // Garante processo (se por algum motivo não existir, cria)
+        // "Buscar ou criar" o processo pelo CNJ (CNJ é único na tabela).
+        // Se já existe um processo com esse CNJ, a operação passa a apontar
+        // para ele (vários credores podem antecipar do mesmo processo).
         let processoId = op.processoId;
-        if (!processoId) {
+        const existente = await Processos.getByCnj(cnj);
+
+        if (existente) {
+          // Reaproveita o processo existente
+          processoId = existente.id;
+          await Operacoes.update(op.id, { processoId });
+        } else if (processoId) {
+          // Atualiza o processo (vazio) criado no início com o CNJ
+          await Processos.update(processoId, { numeroCnj: cnj });
+        } else {
           const novo = await Processos.create({ numeroCnj: cnj });
           processoId = novo.id;
           await Operacoes.update(op.id, { processoId });
-        } else {
-          await Processos.update(processoId, { numeroCnj: cnj });
         }
 
         await Operacoes.update(op.id, {
