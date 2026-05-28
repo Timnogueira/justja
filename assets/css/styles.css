@@ -722,6 +722,104 @@ input:focus, select:focus, textarea:focus {
   .chat-fab { right: 16px; bottom: 16px; }
 }
 
+/* ---------- Backoffice ---------- */
+.admin-topbar {
+  background: var(--brand-900); color: #fff;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+}
+.admin-topbar .nav__inner { height: 64px; }
+.admin-topbar .nav__brand { color: #fff; }
+.admin-topbar .admin-tag {
+  font-size: .7rem; font-weight: 700; letter-spacing: .1em;
+  background: var(--accent-500); color: var(--brand-900);
+  padding: 3px 8px; border-radius: 6px; margin-left: 8px;
+  text-transform: uppercase;
+}
+.admin-topbar .nav__links a { color: rgba(255,255,255,.8); }
+.admin-topbar .nav__links a:hover,
+.admin-topbar .nav__links a.active { color: #fff; }
+.admin-main { padding: 28px var(--gutter); max-width: 1400px; margin: 0 auto; }
+
+.admin-toolbar {
+  display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.admin-toolbar .spacer { flex: 1; }
+.view-toggle { display: inline-flex; border: 1px solid var(--ink-200); border-radius: 999px; overflow: hidden; }
+.view-toggle button {
+  border: 0; background: #fff; padding: 8px 16px; font-weight: 600; font-size: .9rem;
+  color: var(--ink-500); cursor: pointer;
+}
+.view-toggle button.active { background: var(--brand-800); color: #fff; }
+.admin-filter {
+  padding: 8px 12px; border-radius: 10px; border: 1.5px solid var(--ink-200);
+  font-size: .9rem; background: #fff;
+}
+
+/* Kanban */
+.kanban {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(240px, 1fr);
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 12px;
+  align-items: start;
+}
+.kanban__col {
+  background: var(--ink-50);
+  border: 1px solid var(--ink-200);
+  border-radius: var(--radius);
+  min-height: 120px;
+}
+.kanban__head {
+  position: sticky; top: 0;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ink-200);
+  display: flex; justify-content: space-between; align-items: center;
+  font-weight: 700; font-size: .9rem; color: var(--ink-700);
+  background: var(--ink-50);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.kanban__count {
+  background: var(--brand-100); color: var(--brand-800);
+  border-radius: 999px; padding: 2px 9px; font-size: .8rem; font-weight: 700;
+}
+.kanban__body { padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+.kanban__card {
+  background: #fff; border: 1px solid var(--ink-200); border-radius: 12px;
+  padding: 12px 14px; cursor: pointer; text-decoration: none; color: inherit;
+  display: block; transition: box-shadow .12s ease, transform .12s ease;
+}
+.kanban__card:hover { box-shadow: var(--shadow); transform: translateY(-1px); text-decoration: none; }
+.kanban__card-title { font-weight: 700; font-size: .95rem; color: var(--ink-900); margin-bottom: 2px; }
+.kanban__card-meta { font-size: .8rem; color: var(--ink-500); }
+.kanban__card-row { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+.kanban__card-val { font-weight: 700; color: var(--brand-800); font-size: .9rem; }
+.kanban__card-age { font-size: .72rem; color: var(--ink-400); }
+.kanban__empty { padding: 16px; text-align: center; color: var(--ink-400); font-size: .82rem; }
+
+/* Detalhe admin */
+.admin-detail { display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; align-items: start; }
+@media (max-width: 980px) { .admin-detail { grid-template-columns: 1fr; } }
+.admin-section {
+  background: #fff; border: 1px solid var(--ink-200); border-radius: var(--radius);
+  padding: 20px; margin-bottom: 16px;
+}
+.admin-section h3 { font-size: 1.05rem; margin-bottom: 12px; }
+.admin-kv { width: 100%; font-size: .92rem; }
+.admin-kv td { padding: 6px 0; vertical-align: top; }
+.admin-kv td:first-child { color: var(--ink-500); width: 42%; }
+.action-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.nota {
+  background: var(--ink-50); border-radius: 10px; padding: 10px 12px;
+  font-size: .9rem; margin-bottom: 8px;
+}
+.nota__meta { font-size: .75rem; color: var(--ink-400); margin-top: 4px; }
+.timeline-item { display: flex; gap: 10px; padding: 6px 0; font-size: .88rem; }
+.timeline-item .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--brand-600); margin-top: 6px; flex-shrink: 0; }
+.timeline-item .when { color: var(--ink-400); font-size: .78rem; }
+
 /* ---------- Utility ---------- */
 .hide { display: none !important; }
 .flex { display: flex; }

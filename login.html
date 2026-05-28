@@ -62,11 +62,20 @@
 <script src="assets/js/auth.js"></script>
 <script src="assets/js/chat.js"></script>
 <script>
+  async function redirectByRole() {
+    const pessoa = await Pessoas.ensureCurrent();
+    if (pessoa && (pessoa.role === "admin" || pessoa.role === "operador")) {
+      window.location.href = "admin/index.html";
+    } else {
+      window.location.href = "app/dashboard.html";
+    }
+  }
+
   (async () => {
-    // Se já está logado, vai direto pro dashboard
+    // Se já está logado, redireciona por papel
     await Auth.init();
     if (Auth.currentUser()) {
-      window.location.href = "app/dashboard.html";
+      await redirectByRole();
       return;
     }
 
@@ -95,7 +104,7 @@
       submitBtn.textContent = "Entrando…";
       try {
         await Auth.login({ email: email.value, senha: senha.value });
-        window.location.href = "app/dashboard.html";
+        await redirectByRole();
       } catch (err) {
         errBox.textContent = err.message;
         errBox.classList.remove("hide");

@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Backoffice — Just Já</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/css/styles.css">
+  <script src="../assets/js/config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<header class="nav admin-topbar">
+  <div class="container nav__inner">
+    <a href="index.html" class="nav__brand">
+      <svg viewBox="0 0 32 32" fill="none" width="28" height="28" aria-hidden="true">
+        <path d="M16 2L4 8v9c0 6.6 5.4 12 12 13 6.6-1 12-6.4 12-13V8L16 2z" fill="#fff"/>
+        <path d="M11 16l3.5 3.5L22 12" stroke="#f59e0b" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+      Just Já <span class="admin-tag">Backoffice</span>
+    </a>
+    <nav class="nav__links">
+      <a href="index.html" class="active">Funil</a>
+    </nav>
+    <div class="nav__cta" style="display:flex; gap:10px; align-items:center;">
+      <span id="staff-name" style="color:rgba(255,255,255,.8); font-size:.9rem;"></span>
+      <button class="btn btn--ghost" id="btn-logout" style="border-color: rgba(255,255,255,.3); color:#fff;">Sair</button>
+    </div>
+  </div>
+</header>
+
+<main class="admin-main">
+  <div id="guard-blocked" class="hide">
+    <div class="empty">
+      <h3>Acesso restrito</h3>
+      <p>Esta área é exclusiva da equipe Just Já. Sua conta não tem permissão de acesso.</p>
+      <a href="../app/dashboard.html" class="btn btn--primary mt-2">Ir para minha conta</a>
+    </div>
+  </div>
+
+  <div id="admin-content" class="hide">
+    <div class="app-header">
+      <div>
+        <h1 style="font-size:1.7rem; margin:0;">Funil de operações</h1>
+        <p class="muted" id="resumo">—</p>
+      </div>
+    </div>
+
+    <div class="admin-toolbar">
+      <div class="view-toggle">
+        <button id="view-kanban" class="active">Kanban</button>
+        <button id="view-tabela">Tabela</button>
+      </div>
+      <select class="admin-filter" id="filtro-tipo">
+        <option value="">Todos os tipos</option>
+        <option value="aereo">Direito Aéreo</option>
+        <option value="consumidor">Consumidor</option>
+        <option value="bancario">Bancário</option>
+        <option value="outras">Outras relações de consumo</option>
+      </select>
+      <select class="admin-filter" id="filtro-solicitante">
+        <option value="">Cliente e advogado</option>
+        <option value="cliente">Só clientes</option>
+        <option value="advogado">Só advogados</option>
+      </select>
+      <div class="spacer"></div>
+      <button class="btn btn--ghost" id="btn-refresh">↻ Atualizar</button>
+    </div>
+
+    <div id="kanban-wrap"></div>
+    <div id="tabela-wrap" class="hide"></div>
+  </div>
+</main>
+
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script>
+(async () => {
+  const user = await Auth.requireAuth("../login.html");
+  if (!user) return;
+
+  const staff = await Admin.isStaff();
+  if (!staff) {
+    document.getElementById("guard-blocked").classList.remove("hide");
+    return;
+  }
+  document.getElementById("admin-content").classList.remove("hide");
+
+  const pessoa = await Pessoas.getCurrent();
+  document.getElementById("staff-name").textContent = `${pessoa.nome} · ${pessoa.role}`;
+  document.getElementById("btn-logout").onclick = () => Auth.logout("../login.html");
+
+  const ETAPAS = [
+    { id: "cadastro",        label: "Cadastro" },
+    { id: "consultaAnalise", label: "Análise" },
+    { id: "oferta",          label: "Oferta" },
+    { id: "assinatura",      label: "Assinatura" },
+    { id: "protocolacao",    label: "Protocolação" },
+    { id: "pagamento",       label: "Pagamento" },
+  ];
+  const TIPO_LABEL = { aereo: "Aéreo", consumidor: "Consumidor", bancario: "Bancário", outras: "Outras" };
+
+  let todasOps = [];
+
+  function ageStr(iso) {
+    if (!iso) return "";
+    const diff = Date.now() - new Date(iso).getTime();
+    const h = Math.floor(diff / 3.6e6);
+    if (h < 1) return "agora";
+    if (h < 24) return `há ${h}h`;
+    const d = Math.floor(h / 24);
+    return `há ${d}d`;
+  }
+
+  function filtrar() {
+    const ft = document.getElementById("filtro-tipo").value;
+    const fs = document.getElementById("filtro-solicitante").value;
+    return todasOps.filter(o => {
+      if (ft && o.processos?.tipo !== ft) return false;
+      if (fs && o.tipoSolicitante !== fs) return false;
+      return true;
+    });
+  }
+
+  function cardHTML(o) {
+    const tipo = TIPO_LABEL[o.processos?.tipo] || "—";
+    const quem = o.tipoSolicitante === "advogado" ? "⚖️" : "👤";
+    return `
+      <a class="kanban__card" href="operacao.html?id=${o.id}">
+        <div class="kanban__card-title">${o.apelido || ("Op " + o.id.slice(-4))}</div>
+        <div class="kanban__card-meta">${quem} ${o.solicitante?.nome || "—"} · ${tipo}</div>
+        <div class="kanban__card-row">
+          <span class="kanban__card-val">${App.fmtBRL(o.valorEstimado || 0)}</span>
+          <span class="kanban__card-age">${ageStr(o.updatedAt)}</span>
+        </div>
+      </a>`;
+  }
+
+  function renderKanban() {
+    const ops = filtrar();
+    const wrap = document.getElementById("kanban-wrap");
+    wrap.innerHTML = `<div class="kanban">${
+      ETAPAS.map(et => {
+        const lista = ops.filter(o => o.estagio === et.id);
+        return `
+          <div class="kanban__col">
+            <div class="kanban__head">
+              <span>${et.label}</span>
+              <span class="kanban__count">${lista.length}</span>
+            </div>
+            <div class="kanban__body">
+              ${lista.length ? lista.map(cardHTML).join("") : '<div class="kanban__empty">Nenhum caso</div>'}
+            </div>
+          </div>`;
+      }).join("")
+    }</div>`;
+  }
+
+  function renderTabela() {
+    const ops = filtrar();
+    const wrap = document.getElementById("tabela-wrap");
+    const STAGE_LABEL = Object.fromEntries(ETAPAS.map(e => [e.id, e.label]));
+    if (!ops.length) {
+      wrap.innerHTML = `<div class="empty"><p>Nenhuma operação encontrada com esses filtros.</p></div>`;
+      return;
+    }
+    wrap.innerHTML = `
+      <div class="table">
+        <table>
+          <thead>
+            <tr>
+              <th>Apelido</th><th>Solicitante</th><th>Tipo</th>
+              <th>Valor</th><th>Etapa</th><th>Atualizado</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${ops.map(o => `
+              <tr>
+                <td><strong>${o.apelido || ("Op " + o.id.slice(-4))}</strong><br>
+                    <span class="muted" style="font-size:.8rem;">${o.processos?.numeroCnj || "CNJ pendente"}</span></td>
+                <td>${o.tipoSolicitante === "advogado" ? "⚖️" : "👤"} ${o.solicitante?.nome || "—"}</td>
+                <td>${TIPO_LABEL[o.processos?.tipo] || "—"}</td>
+                <td><strong>${App.fmtBRL(o.valorEstimado || 0)}</strong></td>
+                <td><span class="badge badge--brand">${STAGE_LABEL[o.estagio] || o.estagio}</span></td>
+                <td>${ageStr(o.updatedAt)}</td>
+                <td><a class="btn btn--ghost" href="operacao.html?id=${o.id}">Abrir</a></td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  function renderAtual() {
+    const kanbanActive = document.getElementById("view-kanban").classList.contains("active");
+    if (kanbanActive) renderKanban(); else renderTabela();
+    const ops = filtrar();
+    const total = ops.length;
+    const emAnalise = ops.filter(o => o.estagio === "consultaAnalise").length;
+    const aguardandoPgto = ops.filter(o => o.pagamentoStatus === "no_carrinho").length;
+    document.getElementById("resumo").textContent =
+      `${total} operações · ${emAnalise} em análise · ${aguardandoPgto} aguardando pagamento`;
+  }
+
+  async function carregar() {
+    document.getElementById("kanban-wrap").innerHTML = '<div class="loading-text">Carregando…</div>';
+    try {
+      todasOps = await Admin.listOperacoes();
+      renderAtual();
+    } catch (err) {
+      document.getElementById("kanban-wrap").innerHTML =
+        `<div class="alert alert--danger"><div>Erro ao carregar: ${err.message || err}<br>
+         Verifique se rodou o <code>supabase-admin.sql</code>.</div></div>`;
+    }
+  }
+
+  // Toggle de visão
+  document.getElementById("view-kanban").onclick = () => {
+    document.getElementById("view-kanban").classList.add("active");
+    document.getElementById("view-tabela").classList.remove("active");
+    document.getElementById("kanban-wrap").classList.remove("hide");
+    document.getElementById("tabela-wrap").classList.add("hide");
+    renderAtual();
+  };
+  document.getElementById("view-tabela").onclick = () => {
+    document.getElementById("view-tabela").classList.add("active");
+    document.getElementById("view-kanban").classList.remove("active");
+    document.getElementById("tabela-wrap").classList.remove("hide");
+    document.getElementById("kanban-wrap").classList.add("hide");
+    renderAtual();
+  };
+  document.getElementById("filtro-tipo").onchange = renderAtual;
+  document.getElementById("filtro-solicitante").onchange = renderAtual;
+  document.getElementById("btn-refresh").onclick = carregar;
+
+  await carregar();
+})();
+</script>
+
+</body>
+</html>

@@ -138,11 +138,20 @@ window.App = App;
 // ----------------------------------------------------------------------------
 function _toSnake(s) { return s.replace(/[A-Z]/g, c => "_" + c.toLowerCase()); }
 function _toCamel(s) { return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase()); }
+// Recursivo: converte chaves snake_case → camelCase, inclusive em objetos
+// aninhados (joins do Supabase) e JSONB. Como sempre gravamos JSONB em
+// camelCase, a conversão é idempotente nesses casos.
 function _rowToObj(row) {
-  if (!row) return null;
-  const out = {};
-  for (const [k, v] of Object.entries(row)) out[_toCamel(k)] = v;
-  return out;
+  if (row == null) return row;
+  if (Array.isArray(row)) return row.map(_rowToObj);
+  if (typeof row === "object" && !(row instanceof Date)) {
+    const out = {};
+    for (const [k, v] of Object.entries(row)) {
+      out[_toCamel(k)] = (v && typeof v === "object") ? _rowToObj(v) : v;
+    }
+    return out;
+  }
+  return row;
 }
 function _objToRow(obj) {
   const out = {};
@@ -471,3 +480,132 @@ const Assinaturas = (() => {
   return { create, listByOperacao };
 })();
 window.Assinaturas = Assinaturas;
+
+
+// ----------------------------------------------------------------------------
+// 9. Admin / Backoffice (depende das policies de staff — supabase-admin.sql)
+// ----------------------------------------------------------------------------
+const Admin = (() => {
+  const HONORARIOS_PCT_PADRAO = 0.30;
+
+  async function role() {
+    const p = await Pessoas.getCurrent();
+    return p?.role || null;
+  }
+  async function isStaff() {
+    const r = await role();
+    return r === "admin" || r === "operador";
+  }
+  async function isAdmin() {
+    return (await role()) === "admin";
+  }
+
+  // Lista TODAS as operações (RLS de staff permite). Inclui joins úteis.
+  async function listOperacoes() {
+    const { data, error } = await _db()
+      .from("operacoes")
+      .select("*, processos(*), solicitante:pessoas!solicitante_id(*)")
+      .order("updated_at", { ascending: false });
+    if (error) { console.error("Admin.listOperacoes", error); throw error; }
+    return data.map(_rowToObj);
+  }
+
+  async function getOperacao(id) {
+    const { data, error } = await _db()
+      .from("operacoes")
+      .select("*, processos(*), solicitante:pessoas!solicitante_id(*), cliente:pessoas!cliente_id(*), advogado:pessoas!advogado_id(*)")
+      .eq("id", id)
+      .maybeSingle();
+    if (error) { console.error("Admin.getOperacao", error); throw error; }
+    return _rowToObj(data);
+  }
+
+  async function getOfertas(operacaoId) {
+    return await Ofertas.listByOperacao(operacaoId);
+  }
+  async function getAssinaturas(operacaoId) {
+    return await Assinaturas.listByOperacao(operacaoId);
+  }
+
+  async function updateOperacao(id, patch) {
+    return await Operacoes.update(id, patch);
+  }
+
+  async function setEstagio(id, estagio) {
+    return await Operacoes.advance(id, estagio);
+  }
+
+  async function addNota(id, texto) {
+    const op = await getOperacao(id);
+    const notas = Array.isArray(op.notasInternas) ? op.notasInternas : [];
+    const me = await Pessoas.getCurrent();
+    notas.push({ texto, autor: me?.nome || "equipe", at: new Date().toISOString() });
+    return await Operacoes.update(id, { notasInternas: notas });
+  }
+
+  // Recalcula análise (mock) e gera NOVA oferta (versionada).
+  async function rerunAnalise(id, overrides = {}) {
+    const op = await getOperacao(id);
+    const valorDeclarado = op.valorEstimado || 10000;
+
+    // valor base: usa override OU recalcula com pequena variação aleatória
+    const valorBaseCausa = overrides.valorBaseCausa != null
+      ? overrides.valorBaseCausa
+      : Math.round(valorDeclarado * (1 + ((Math.random() * 0.3) - 0.15)));
+
+    const classe = overrides.classe || (() => {
+      const k = Math.floor(Math.random() * 100);
+      return k < 25 ? "B" : k < 60 ? "C" : k < 85 ? "D" : "E";
+    })();
+    const desconto = overrides.descontoPct != null
+      ? overrides.descontoPct
+      : { A: 0.10, B: 0.18, C: 0.28, D: 0.40, E: 0.55 }[classe];
+    const valorAntecipado = overrides.valorAntecipado != null
+      ? overrides.valorAntecipado
+      : Math.round(valorBaseCausa * (1 - desconto));
+
+    const analise = {
+      valorBaseCausa,
+      fase: overrides.fase || op.analise?.fase || "Em fase de cumprimento de sentença",
+      decisao: overrides.decisao || op.analise?.decisao || "Sentença favorável transitada em julgado",
+      classe,
+      confianca: overrides.confianca ?? 0.82,
+      recalculadoEm: new Date().toISOString(),
+    };
+    await Operacoes.update(id, { analise, analiseStatus: "concluida" });
+    const novaOferta = await Ofertas.create({
+      operacaoId: id,
+      valorBaseCausa,
+      valorAntecipado,
+      descontoPct: desconto,
+      validadeDias: overrides.validadeDias || 7,
+      memorial: { classe, desconto, valorDeclarado, valorBaseCausa, origem: "backoffice" },
+    });
+    return { analise, oferta: novaOferta };
+  }
+
+  async function aprovarComprovante(id) {
+    const op = await getOperacao(id);
+    const protocolacao = { ...(op.protocolacao || {}), validado: true, validadoEm: new Date().toISOString() };
+    return await Operacoes.update(id, { protocolacao });
+  }
+  async function rejeitarComprovante(id, motivo) {
+    const op = await getOperacao(id);
+    const protocolacao = { ...(op.protocolacao || {}), validado: false, rejeitadoEm: new Date().toISOString(), motivoRejeicao: motivo || null, comprovanteEnviado: false };
+    return await Operacoes.update(id, { protocolacao, pagamentoStatus: "pendente" });
+  }
+
+  async function liberarPagamento(id, { valor, txid }) {
+    const pagamento = { pagoEm: new Date().toISOString(), valor: valor || null, txid: txid || null, liberadoPor: (await Pessoas.getCurrent())?.nome };
+    return await Operacoes.update(id, { pagamentoStatus: "pago", pagamento, status: "concluida" });
+  }
+
+  return {
+    role, isStaff, isAdmin,
+    listOperacoes, getOperacao, getOfertas, getAssinaturas,
+    updateOperacao, setEstagio, addNota,
+    rerunAnalise, aprovarComprovante, rejeitarComprovante, liberarPagamento,
+    HONORARIOS_PCT_PADRAO,
+  };
+})();
+window.Admin = Admin;

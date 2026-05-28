@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Operação — Backoffice Just Já</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/css/styles.css">
+  <script src="../assets/js/config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<header class="nav admin-topbar">
+  <div class="container nav__inner">
+    <a href="index.html" class="nav__brand">
+      <svg viewBox="0 0 32 32" fill="none" width="28" height="28" aria-hidden="true">
+        <path d="M16 2L4 8v9c0 6.6 5.4 12 12 13 6.6-1 12-6.4 12-13V8L16 2z" fill="#fff"/>
+        <path d="M11 16l3.5 3.5L22 12" stroke="#f59e0b" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+      Just Já <span class="admin-tag">Backoffice</span>
+    </a>
+    <div class="nav__cta">
+      <a href="index.html" class="btn btn--ghost" style="border-color: rgba(255,255,255,.3); color:#fff;">← Voltar ao funil</a>
+    </div>
+  </div>
+</header>
+
+<main class="admin-main">
+  <div id="guard-blocked" class="hide">
+    <div class="empty"><h3>Acesso restrito</h3><p>Área exclusiva da equipe.</p>
+    <a href="../app/dashboard.html" class="btn btn--primary mt-2">Minha conta</a></div>
+  </div>
+  <div id="content" class="hide"></div>
+  <div id="loading" class="loading-text" style="padding:40px;">Carregando…</div>
+</main>
+
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script>
+(async () => {
+  const user = await Auth.requireAuth("../login.html");
+  if (!user) return;
+  if (!(await Admin.isStaff())) {
+    document.getElementById("loading").classList.add("hide");
+    document.getElementById("guard-blocked").classList.remove("hide");
+    return;
+  }
+  const souAdmin = await Admin.isAdmin();
+
+  const ETAPAS = [
+    { id: "cadastro",        label: "Cadastro" },
+    { id: "consultaAnalise", label: "Análise" },
+    { id: "oferta",          label: "Oferta" },
+    { id: "assinatura",      label: "Assinatura" },
+    { id: "protocolacao",    label: "Protocolação" },
+    { id: "pagamento",       label: "Pagamento" },
+  ];
+  const TIPO_LABEL = { aereo: "Direito Aéreo", consumidor: "Consumidor", bancario: "Bancário", outras: "Outras relações de consumo" };
+  const idxOf = (s) => ETAPAS.findIndex(e => e.id === s);
+
+  const id = new URL(location.href).searchParams.get("id");
+  if (!id) { location.href = "index.html"; return; }
+
+  async function load() {
+    const op = await Admin.getOperacao(id);
+    if (!op) {
+      document.getElementById("loading").textContent = "Operação não encontrada.";
+      return;
+    }
+    const ofertas = await Admin.getOfertas(id);
+    const assinaturas = await Admin.getAssinaturas(id);
+    render(op, ofertas, assinaturas);
+  }
+
+  function fmtDT(iso) {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleString("pt-BR");
+  }
+
+  function render(op, ofertas, assinaturas) {
+    document.getElementById("loading").classList.add("hide");
+    const content = document.getElementById("content");
+    content.classList.remove("hide");
+
+    const ofertaAtual = ofertas.find(o => o.status === "ativa" || o.status === "aceita") || ofertas[0];
+    const stageIdx = idxOf(op.estagio);
+    const notas = Array.isArray(op.notasInternas) ? op.notasInternas : [];
+    const hist = Array.isArray(op.historico) ? op.historico : [];
+    const prot = op.protocolacao || {};
+
+    content.innerHTML = `
+      <div class="app-header">
+        <div>
+          <h1 style="font-size:1.6rem; margin:0;">${op.apelido || ("Operação " + op.id.slice(-4))}</h1>
+          <p class="muted">
+            ${op.tipoSolicitante === "advogado" ? "⚖️ Advogado" : "👤 Cliente"}: ${op.solicitante?.nome || "—"}
+            · <span class="badge badge--brand">${ETAPAS[stageIdx]?.label || op.estagio}</span>
+            ${op.status === "concluida" ? '· <span class="badge badge--success">Concluída</span>' : ""}
+            ${op.status === "recusada" ? '· <span class="badge badge--danger">Recusada</span>' : ""}
+          </p>
+        </div>
+      </div>
+
+      <div class="admin-detail">
+        <!-- COLUNA ESQUERDA: dados -->
+        <div>
+          <div class="admin-section">
+            <h3>Solicitante</h3>
+            <table class="admin-kv">
+              <tr><td>Nome</td><td>${op.solicitante?.nome || "—"}</td></tr>
+              <tr><td>E-mail</td><td>${op.solicitante?.email || "—"}</td></tr>
+              <tr><td>Telefone</td><td>${op.solicitante?.telefone || "—"}</td></tr>
+              <tr><td>Papel</td><td>${op.tipoSolicitante}</td></tr>
+              <tr><td>WhatsApp opt-in</td><td>${op.solicitante?.whatsappOptIn ? "Sim" : "Não"}</td></tr>
+            </table>
+          </div>
+
+          <div class="admin-section">
+            <h3>Processo</h3>
+            <table class="admin-kv">
+              <tr><td>CNJ</td><td>${op.processos?.numeroCnj || "—"}</td></tr>
+              <tr><td>Tribunal</td><td>${op.processos?.tribunal || "—"}</td></tr>
+              <tr><td>Tipo</td><td>${TIPO_LABEL[op.processos?.tipo] || "—"}</td></tr>
+              <tr><td>CPF titular</td><td>${op.cpfTitular || "—"}</td></tr>
+              <tr><td>Advogado (texto)</td><td>${op.advogadoTexto || "—"}</td></tr>
+              <tr><td>Escopo</td><td>${op.escopo}</td></tr>
+              <tr><td>Valor estimado</td><td><strong>${App.fmtBRL(op.valorEstimado || 0)}</strong></td></tr>
+              <tr><td>Descrição</td><td>${op.descricao || "—"}</td></tr>
+            </table>
+          </div>
+
+          <div class="admin-section">
+            <h3>Análise</h3>
+            ${op.analise ? `
+              <table class="admin-kv">
+                <tr><td>Valor base</td><td><strong>${App.fmtBRL(op.analise.valorBaseCausa)}</strong></td></tr>
+                <tr><td>Classe de risco</td><td>${op.analise.classe}</td></tr>
+                <tr><td>Fase</td><td>${op.analise.fase || "—"}</td></tr>
+                <tr><td>Decisão</td><td>${op.analise.decisao || "—"}</td></tr>
+                <tr><td>Confiança</td><td>${op.analise.confianca ? (op.analise.confianca*100).toFixed(0)+"%" : "—"}</td></tr>
+              </table>
+            ` : `<p class="muted">Análise ainda não rodada.</p>`}
+          </div>
+
+          <div class="admin-section">
+            <h3>Ofertas (${ofertas.length})</h3>
+            ${ofertas.length ? `
+              <div class="table"><table>
+                <thead><tr><th>Valor antecipado</th><th>Desconto</th><th>Status</th><th>Validade</th><th>Gerada</th></tr></thead>
+                <tbody>
+                  ${ofertas.map(o => `
+                    <tr>
+                      <td><strong>${App.fmtBRL(o.valorAntecipado)}</strong></td>
+                      <td>${(o.descontoPct*100).toFixed(0)}%</td>
+                      <td><span class="badge ${o.status==='aceita'?'badge--success':o.status==='ativa'?'badge--brand':''}">${o.status}</span></td>
+                      <td>${App.fmtDate(o.expiresAt)}</td>
+                      <td>${fmtDT(o.geradaEm)}</td>
+                    </tr>`).join("")}
+                </tbody>
+              </table></div>
+            ` : `<p class="muted">Nenhuma oferta gerada.</p>`}
+          </div>
+
+          <div class="admin-section">
+            <h3>Documentos</h3>
+            <table class="admin-kv">
+              <tr><td>Termo assinado</td><td>${prot.termoAssinadoUrl ? `<a href="${prot.termoAssinadoUrl}" target="_blank">${prot.termoAssinadoNome || "ver"}</a>` : "—"}</td></tr>
+              <tr><td>Comprovante</td><td>${prot.comprovanteUrl ? `<a href="${prot.comprovanteUrl}" target="_blank">${prot.comprovanteNome || "ver"}</a>` : "—"}</td></tr>
+              <tr><td>Protocolado por</td><td>${prot.protocoladoPor || "—"}</td></tr>
+              <tr><td>Nº protocolo</td><td>${prot.numeroProtocolo || "—"}</td></tr>
+              <tr><td>Validação</td><td>${prot.validado === true ? '<span class="badge badge--success">Validado</span>' : prot.validado === false && prot.rejeitadoEm ? '<span class="badge badge--danger">Rejeitado</span>' : "—"}</td></tr>
+            </table>
+          </div>
+
+          <div class="admin-section">
+            <h3>Assinaturas (${assinaturas.length})</h3>
+            ${assinaturas.length ? assinaturas.map(s => `
+              <div class="nota">
+                ${s.role} — ${s.nomeDigitado || "—"}
+                <div class="nota__meta">${fmtDT(s.assinadoEm)} · hash ${s.hash || "—"}</div>
+              </div>`).join("") : '<p class="muted">Nenhuma assinatura registrada.</p>'}
+          </div>
+        </div>
+
+        <!-- COLUNA DIREITA: ações + notas + timeline -->
+        <div>
+          <div class="admin-section">
+            <h3>Mover etapa</h3>
+            <p class="muted" style="font-size:.88rem;">Etapa atual: <strong>${ETAPAS[stageIdx]?.label || op.estagio}</strong></p>
+            <div class="action-row">
+              <button class="btn btn--ghost" id="btn-voltar" ${stageIdx<=0?"disabled":""}>← Voltar etapa</button>
+              <button class="btn btn--primary" id="btn-avancar" ${stageIdx>=ETAPAS.length-1?"disabled":""}>Avançar etapa →</button>
+            </div>
+            <div class="field mt-2">
+              <label class="field__label" for="goto-stage">Ir direto para etapa</label>
+              <select id="goto-stage">
+                ${ETAPAS.map(e => `<option value="${e.id}" ${e.id===op.estagio?"selected":""}>${e.label}</option>`).join("")}
+              </select>
+            </div>
+            <button class="btn btn--ghost btn--block mt-1" id="btn-goto">Aplicar etapa selecionada</button>
+          </div>
+
+          <div class="admin-section">
+            <h3>Análise & oferta</h3>
+            <p class="muted" style="font-size:.88rem;">Rodar a análise gera uma nova oferta (a anterior vira "superada").</p>
+            <button class="btn btn--accent btn--block" id="btn-rerun">↻ Rodar análise automática</button>
+            <details style="margin-top:12px;">
+              <summary style="cursor:pointer; font-weight:600; font-size:.9rem;">Ajustar manualmente</summary>
+              <div class="form mt-2">
+                <div class="field">
+                  <label class="field__label">Valor base da causa</label>
+                  <input id="m-base" inputmode="numeric" placeholder="R$ 0,00" value="${op.analise?.valorBaseCausa ? App.fmtBRL(op.analise.valorBaseCausa) : ""}">
+                </div>
+                <div class="field--row">
+                  <div class="field">
+                    <label class="field__label">Classe</label>
+                    <select id="m-classe">
+                      ${["A","B","C","D","E"].map(c => `<option ${op.analise?.classe===c?"selected":""}>${c}</option>`).join("")}
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label class="field__label">Valor antecipado</label>
+                    <input id="m-ant" inputmode="numeric" placeholder="R$ 0,00">
+                  </div>
+                </div>
+                <button class="btn btn--primary" id="btn-manual">Gerar oferta manual</button>
+              </div>
+            </details>
+          </div>
+
+          <div class="admin-section">
+            <h3>Protocolação</h3>
+            <div class="action-row">
+              <button class="btn btn--ghost" id="btn-aprovar" ${prot.comprovanteEnviado?"":"disabled"}>✓ Aprovar comprovante</button>
+              <button class="btn btn--ghost" id="btn-rejeitar" ${prot.comprovanteEnviado?"":"disabled"}>✕ Rejeitar</button>
+            </div>
+          </div>
+
+          <div class="admin-section">
+            <h3>Pagamento</h3>
+            <table class="admin-kv">
+              <tr><td>Status</td><td>${badgePgto(op.pagamentoStatus)}</td></tr>
+              ${op.pagamento?.pagoEm ? `<tr><td>Pago em</td><td>${fmtDT(op.pagamento.pagoEm)}</td></tr>` : ""}
+              ${op.pagamento?.txid ? `<tr><td>txid</td><td>${op.pagamento.txid}</td></tr>` : ""}
+            </table>
+            ${op.pagamentoStatus !== "pago" ? `
+              <div class="field mt-2">
+                <label class="field__label">txid do PIX (opcional)</label>
+                <input id="pix-txid" placeholder="E1234...">
+              </div>
+              <button class="btn btn--accent btn--block" id="btn-liberar">💰 Liberar pagamento</button>
+            ` : `<p class="muted" style="font-size:.88rem;">Pagamento já liberado.</p>`}
+          </div>
+
+          <div class="admin-section">
+            <h3>Notas internas</h3>
+            <div id="notas-lista">
+              ${notas.length ? notas.slice().reverse().map(n => `
+                <div class="nota">${n.texto}<div class="nota__meta">${n.autor} · ${fmtDT(n.at)}</div></div>
+              `).join("") : '<p class="muted" style="font-size:.88rem;">Sem notas ainda.</p>'}
+            </div>
+            <div class="field mt-2">
+              <textarea id="nova-nota" rows="2" placeholder="Escreva uma nota interna…"></textarea>
+            </div>
+            <button class="btn btn--ghost btn--block" id="btn-nota">Adicionar nota</button>
+          </div>
+
+          <div class="admin-section">
+            <h3>Timeline</h3>
+            ${hist.length ? hist.slice().reverse().map(h => `
+              <div class="timeline-item">
+                <div class="dot"></div>
+                <div>${(ETAPAS.find(e=>e.id===h.estagio)?.label) || h.estagio}<div class="when">${fmtDT(h.at)}</div></div>
+              </div>`).join("") : '<p class="muted" style="font-size:.88rem;">Sem eventos.</p>'}
+          </div>
+        </div>
+      </div>
+    `;
+
+    bindActions(op, ofertaAtual, stageIdx);
+  }
+
+  function badgePgto(s) {
+    if (s === "pago") return '<span class="badge badge--success">Pago</span>';
+    if (s === "no_carrinho") return '<span class="badge badge--warn">No carrinho</span>';
+    return '<span class="badge">Pendente</span>';
+  }
+
+  function bindActions(op, ofertaAtual, stageIdx) {
+    const reload = () => load();
+
+    document.getElementById("btn-voltar").onclick = async () => {
+      if (stageIdx > 0) { await Admin.setEstagio(op.id, ETAPAS[stageIdx-1].id); reload(); }
+    };
+    document.getElementById("btn-avancar").onclick = async () => {
+      if (stageIdx < ETAPAS.length-1) { await Admin.setEstagio(op.id, ETAPAS[stageIdx+1].id); reload(); }
+    };
+    document.getElementById("btn-goto").onclick = async () => {
+      const s = document.getElementById("goto-stage").value;
+      await Admin.setEstagio(op.id, s); reload();
+    };
+
+    document.getElementById("btn-rerun").onclick = async (e) => {
+      e.target.disabled = true; e.target.textContent = "Rodando…";
+      try { await Admin.rerunAnalise(op.id); reload(); }
+      catch (err) { alert("Erro: " + (err.message||err)); e.target.disabled=false; e.target.textContent="↻ Rodar análise automática"; }
+    };
+    document.getElementById("btn-manual").onclick = async () => {
+      const base = App.parseBRL(document.getElementById("m-base").value);
+      const ant  = App.parseBRL(document.getElementById("m-ant").value);
+      const classe = document.getElementById("m-classe").value;
+      if (!base) { alert("Informe o valor base."); return; }
+      const desconto = ant ? (1 - ant/base) : undefined;
+      await Admin.rerunAnalise(op.id, {
+        valorBaseCausa: base,
+        classe,
+        valorAntecipado: ant || undefined,
+        descontoPct: desconto,
+      });
+      reload();
+    };
+
+    document.getElementById("btn-aprovar").onclick = async () => {
+      await Admin.aprovarComprovante(op.id); reload();
+    };
+    document.getElementById("btn-rejeitar").onclick = async () => {
+      const motivo = prompt("Motivo da rejeição (opcional):") || "";
+      await Admin.rejeitarComprovante(op.id, motivo); reload();
+    };
+
+    const btnLib = document.getElementById("btn-liberar");
+    if (btnLib) btnLib.onclick = async () => {
+      const txid = document.getElementById("pix-txid").value.trim();
+      const valor = ofertaAtual?.valorAntecipado || op.valorEstimado || null;
+      if (!confirm(`Confirmar liberação de pagamento de ${App.fmtBRL(valor)}?`)) return;
+      await Admin.liberarPagamento(op.id, { valor, txid });
+      reload();
+    };
+
+    document.getElementById("btn-nota").onclick = async () => {
+      const txt = document.getElementById("nova-nota").value.trim();
+      if (!txt) return;
+      await Admin.addNota(op.id, txt); reload();
+    };
+
+    App.bindMask(document.getElementById("m-base"), App.maskMoney);
+    App.bindMask(document.getElementById("m-ant"), App.maskMoney);
+  }
+
+  await load();
+})();
+</script>
+
+</body>
+</html>
