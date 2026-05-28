@@ -66,6 +66,10 @@
         <option value="cliente">Só clientes</option>
         <option value="advogado">Só advogados</option>
       </select>
+      <select class="admin-filter" id="filtro-tribunal">
+        <option value="">Todos os tribunais/varas</option>
+      </select>
+      <input class="admin-filter" id="filtro-busca" type="search" placeholder="Buscar (apelido, CNJ, nome…)" style="min-width:220px;">
       <div class="spacer"></div>
       <button class="btn btn--ghost" id="btn-refresh">↻ Atualizar</button>
     </div>
@@ -118,11 +122,28 @@
   function filtrar() {
     const ft = document.getElementById("filtro-tipo").value;
     const fs = document.getElementById("filtro-solicitante").value;
+    const ftrib = document.getElementById("filtro-tribunal").value;
+    const q = (document.getElementById("filtro-busca").value || "").trim().toLowerCase();
     return todasOps.filter(o => {
       if (ft && o.processos?.tipo !== ft) return false;
       if (fs && o.tipoSolicitante !== fs) return false;
+      if (ftrib && (o.processos?.tribunal || "") !== ftrib) return false;
+      if (q) {
+        const hay = [
+          o.apelido, o.processos?.numeroCnj, o.solicitante?.nome,
+          o.solicitante?.email, o.cpfTitular,
+        ].join(" ").toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
       return true;
     });
+  }
+
+  function popularTribunais() {
+    const sel = document.getElementById("filtro-tribunal");
+    const tribunais = [...new Set(todasOps.map(o => o.processos?.tribunal).filter(Boolean))].sort();
+    sel.innerHTML = `<option value="">Todos os tribunais/varas</option>` +
+      tribunais.map(t => `<option value="${t}">${t}</option>`).join("");
   }
 
   function cardHTML(o) {
@@ -209,6 +230,7 @@
     document.getElementById("kanban-wrap").innerHTML = '<div class="loading-text">Carregando…</div>';
     try {
       todasOps = await Admin.listOperacoes();
+      popularTribunais();
       renderAtual();
     } catch (err) {
       document.getElementById("kanban-wrap").innerHTML =
@@ -234,6 +256,8 @@
   };
   document.getElementById("filtro-tipo").onchange = renderAtual;
   document.getElementById("filtro-solicitante").onchange = renderAtual;
+  document.getElementById("filtro-tribunal").onchange = renderAtual;
+  document.getElementById("filtro-busca").oninput = renderAtual;
   document.getElementById("btn-refresh").onclick = carregar;
 
   await carregar();

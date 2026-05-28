@@ -228,9 +228,12 @@ const Jornada = (() => {
     // ---------- 2. CONSULTA + ANÁLISE ----------
     async consultaAnalise(target, op) {
       const sub = op.analiseStatus || "form";
-      if (sub === "form")              return renderConsultaForm(target, op);
-      if (sub === "processando")       return renderProcessando(target, op);
-      if (sub === "aguardando_async")  return renderAguardandoAsync(target, op);
+      // No piloto NÃO geramos oferta automática. O cliente informa o processo
+      // e autoriza; a partir daí a operação fica "aguardando a equipe" — que
+      // roda a análise e gera a proposta pelo backoffice.
+      // Qualquer status diferente de "form" = já enviado → tela de espera
+      // (evita mostrar o formulário de novo depois do envio).
+      if (sub !== "form") return renderAguardandoEquipe(target, op);
       return renderConsultaForm(target, op);
     },
 
@@ -244,6 +247,30 @@ const Jornada = (() => {
       }
       const adv = isAdvogado(op);
       const soHonorarios = isSoHonorarios(op);
+
+      // Se o cliente já aceitou, mostra confirmação + espera (backoffice libera assinatura).
+      if (oferta.status === "aceita") {
+        target.innerHTML = `
+          <h2>✅ Proposta aceita!</h2>
+          <p class="muted">
+            Que ótimo! Recebemos o seu aceite. Agora estamos preparando os documentos da cessão.
+            Você será avisado(a) por e-mail assim que o contrato estiver pronto para assinatura.
+          </p>
+          <div class="card mt-3" style="background: linear-gradient(135deg, var(--success-100), #fff); border-color: #86efac;">
+            <div class="muted" style="font-size:.85rem; text-transform:uppercase; letter-spacing:.08em; font-weight:600;">Valor aceito</div>
+            <div class="sim__amount" style="font-size: 2.2rem;">${App.fmtBRL(oferta.escolhaCessao === "parcial" ? Math.round((oferta.valorBaseCausa*(1-HONORARIOS_PCT_PADRAO))*(1-oferta.descontoPct)) : oferta.valorAntecipado)}</div>
+            <div class="muted">Modalidade: ${labelEscolha(oferta.escolhaCessao || op.escolhaCessao)}</div>
+          </div>
+          <div class="alert mt-3">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <div>Status: <strong>aguardando preparação da assinatura pela equipe.</strong></div>
+          </div>
+          <div class="journey-actions">
+            <a href="dashboard.html" class="btn btn--ghost">Voltar ao painel</a>
+          </div>
+        `;
+        return;
+      }
 
       const valorBase     = oferta.valorBaseCausa;
       const valorAntCheio = oferta.valorAntecipado;
@@ -340,10 +367,12 @@ const Jornada = (() => {
 
       document.getElementById("btn-aceitar").onclick = async () => {
         const escolhaFinal = soHonorarios ? "so_honorarios" : (op.escolhaCessao || "integral");
-        const valorFinal = escolhaFinal === "parcial" ? ofertaParcial : valorAntCheio;
+        // Marca a oferta como aceita — mas NÃO avança a etapa.
+        // Quem libera a assinatura é o backoffice (após ver o aceite).
         await Ofertas.aceitar(oferta.id, escolhaFinal);
         await Operacoes.update(op.id, { escolhaCessao: escolhaFinal });
-        await advance(op, "assinatura", { escolhaCessao: escolhaFinal });
+        const fresh = await Operacoes.get(op.id);
+        await render(fresh);
       };
       document.getElementById("btn-revisar").onclick = () => {
         alert("Pedido de revisão registrado. Nosso time entrará em contato em até 1 dia útil.");
@@ -363,6 +392,35 @@ const Jornada = (() => {
         target.innerHTML = `<p>Não há oferta aceita ainda. <a href="?id=${op.id}&stage=oferta">Voltar</a></p>`;
         return;
       }
+
+      // Se já assinou, mostra confirmação + espera (backoffice libera protocolação).
+      const assinaturas = await Assinaturas.listByOperacao(op.id);
+      if (assinaturas.length > 0) {
+        const a0 = assinaturas[assinaturas.length - 1];
+        target.innerHTML = `
+          <h2>✅ Contrato assinado!</h2>
+          <p class="muted">
+            Recebemos a sua assinatura. Nossa equipe vai conferir e liberar a próxima etapa
+            (protocolação do termo nos autos). Você será avisado(a) por e-mail.
+          </p>
+          <div class="card mt-3">
+            <table style="width:100%; font-size:.96rem;">
+              <tr><td class="muted">Assinado por:</td><td><strong>${a0.nomeDigitado || "—"}</strong></td></tr>
+              <tr><td class="muted">Data:</td><td>${App.fmtDate(a0.assinadoEm)}</td></tr>
+              <tr><td class="muted">Comprovante:</td><td>hash ${a0.hash || "—"}</td></tr>
+            </table>
+          </div>
+          <div class="alert mt-3">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <div>Status: <strong>aguardando liberação da protocolação pela equipe.</strong></div>
+          </div>
+          <div class="journey-actions">
+            <a href="dashboard.html" class="btn btn--ghost">Voltar ao painel</a>
+          </div>
+        `;
+        return;
+      }
+
       const escolha = op.escolhaCessao || "integral";
       const adv = isAdvogado(op);
       const tipoTermo = adv
@@ -464,7 +522,9 @@ const Jornada = (() => {
             ip: "client-side",
             hash: "demo-" + Math.random().toString(36).slice(2, 12),
           });
-          await advance(op, "protocolacao");
+          // Assinou — NÃO avança. Backoffice libera a protocolação.
+          const fresh = await Operacoes.get(op.id);
+          await render(fresh);
         } catch (err) {
           console.error("Erro ao assinar:", err);
           const box = document.createElement("div");
@@ -620,11 +680,9 @@ const Jornada = (() => {
           </div>
 
           <div class="journey-actions">
-            <button class="btn btn--primary btn--lg" id="btn-pgto">Acompanhar pagamento →</button>
-            <a href="dashboard.html" class="btn btn--ghost">Voltar ao painel</a>
+            <a href="dashboard.html" class="btn btn--primary">Voltar ao painel</a>
           </div>
         `;
-        document.getElementById("btn-pgto").onclick = async () => await advance(op, "pagamento");
       }
     },
 
@@ -666,18 +724,14 @@ const Jornada = (() => {
               <tr><td class="muted">Previsão de pagamento:</td><td>até ${op.protocolacao?.prazoPagamentoHoras || 24}h após validação</td></tr>
             </table>
           </div>
+          <div class="alert mt-3">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <div>A liberação do pagamento é feita pela equipe Just Já após a validação dos documentos.</div>
+          </div>
           <div class="journey-actions">
-            <button class="btn btn--primary btn--lg" id="btn-simular-pago">[demo] Simular pagamento liberado</button>
-            <a href="dashboard.html" class="btn btn--ghost">Voltar ao painel</a>
+            <a href="dashboard.html" class="btn btn--primary">Voltar ao painel</a>
           </div>
         `;
-        document.getElementById("btn-simular-pago").onclick = async () => {
-          const pagamento = { pagoEm: new Date().toISOString(), valor };
-          await Operacoes.update(op.id, { pagamentoStatus: "pago", pagamento, status: "concluida" });
-          op.pagamentoStatus = "pago";
-          op.pagamento = pagamento;
-          await render(op);
-        };
       }
     },
   };
@@ -687,32 +741,53 @@ const Jornada = (() => {
   // ===========================================================================
   function renderConsultaForm(target, op) {
     const adv = isAdvogado(op);
+    let modo = op._modoInfoProcesso || "numero"; // estado de UI (não persiste)
 
     target.innerHTML = `
-      <h2>Vamos analisar o seu processo</h2>
+      <h2>Informe o seu processo</h2>
       <p class="muted">
-        Precisamos do número do processo e da sua autorização para consultar os andamentos
-        nos sistemas públicos do tribunal. Nenhum dado pessoal é exposto.
+        Escolha como prefere nos passar o processo. Depois é só autorizar a consulta —
+        a nossa equipe analisa e prepara a proposta.
       </p>
 
+      <div class="view-toggle mt-2" id="proc-tabs" style="margin-bottom: 4px;">
+        <button type="button" data-modo="numero" class="${modo==='numero'?'active':''}">Por número (CNJ)</button>
+        <button type="button" data-modo="anexar" class="${modo==='anexar'?'active':''}">Anexar processo</button>
+        <button type="button" data-modo="cpf" disabled title="Em breve" style="opacity:.5; cursor:not-allowed;">Buscar por CPF (em breve)</button>
+      </div>
+
       <form class="form mt-3" id="form-consulta">
-        <div class="field">
-          <label class="field__label" for="cnj">Número do processo (CNJ)</label>
-          <input id="cnj" placeholder="0000000-00.0000.0.00.0000" value="${op.processos?.numeroCnj || ""}" required>
-          <span class="field__hint">Você encontra esse número na intimação ou no sistema do tribunal.</span>
+        <div id="painel-numero" class="${modo==='numero'?'':'hide'}">
+          <div class="field">
+            <label class="field__label" for="cnj">Número do processo (CNJ)</label>
+            <input id="cnj" placeholder="0000000-00.0000.0.00.0000" value="${op.processos?.numeroCnj || ""}">
+            <span class="field__hint">Você encontra na intimação ou no sistema do tribunal.</span>
+          </div>
+        </div>
+
+        <div id="painel-anexar" class="${modo==='anexar'?'':'hide'}">
+          <div class="field">
+            <label class="field__label" for="anexo">Documento do processo (PDF ou imagem)</label>
+            <input id="anexo" type="file" accept=".pdf,.jpg,.jpeg,.png">
+            <span class="field__hint">Pode ser a petição inicial, a sentença ou um print dos autos. Máx 10 MB.</span>
+          </div>
+        </div>
+
+        <div id="painel-cpf" class="${modo==='cpf'?'':'hide'}">
+          <div class="alert alert--warn"><div>A busca automática por CPF (com autodeclaração do cliente) chega em breve. Por enquanto use "Por número" ou "Anexar".</div></div>
         </div>
 
         <div class="field">
           <label class="field__label" for="cpf-consulta">${adv ? "CPF do(a) seu(sua) cliente" : "Seu CPF"}</label>
           <input id="cpf-consulta" placeholder="000.000.000-00" value="${op.cpfTitular || ""}" required>
-          <span class="field__hint">${adv ? "Necessário para confirmar a parte do processo." : "Necessário para confirmar que você é parte do processo."}</span>
+          <span class="field__hint">${adv ? "Confirma a parte do processo." : "Confirma que você é parte do processo."}</span>
         </div>
 
         ${!adv ? `
           <div class="field">
             <label class="field__label" for="advogado">Nome do(a) seu(sua) advogado(a)</label>
             <input id="advogado" placeholder="Nome completo" value="${op.advogadoTexto || ""}">
-            <span class="field__hint">Para que possamos contatá-lo(a) sobre a cessão. Opcional nesta etapa.</span>
+            <span class="field__hint">Para contatá-lo(a) sobre a cessão. Opcional nesta etapa.</span>
           </div>
         ` : ""}
 
@@ -732,169 +807,129 @@ const Jornada = (() => {
         </div>
 
         <div class="journey-actions">
-          <button type="submit" class="btn btn--primary btn--lg">Autorizar e iniciar análise →</button>
+          <button type="submit" class="btn btn--primary btn--lg">Autorizar e enviar para análise →</button>
           <button type="button" class="btn btn--ghost" id="btn-back">Voltar ao cadastro</button>
         </div>
       </form>
     `;
+
     App.bindMask(document.getElementById("cnj"), App.maskCNJ);
     App.bindMask(document.getElementById("cpf-consulta"), App.maskCPF);
     document.getElementById("btn-back").onclick = async () => await advance(op, "cadastro");
 
-    const submitBtnConsulta = document.querySelector("#form-consulta button[type=submit]");
+    // Troca de aba (sem re-render, preserva o que já foi digitado)
+    target.querySelectorAll("#proc-tabs button[data-modo]").forEach(b => {
+      b.addEventListener("click", () => {
+        if (b.disabled) return;
+        modo = b.dataset.modo;
+        op._modoInfoProcesso = modo;
+        target.querySelectorAll("#proc-tabs button[data-modo]").forEach(x => x.classList.toggle("active", x.dataset.modo === modo));
+        document.getElementById("painel-numero").classList.toggle("hide", modo !== "numero");
+        document.getElementById("painel-anexar").classList.toggle("hide", modo !== "anexar");
+        document.getElementById("painel-cpf").classList.toggle("hide", modo !== "cpf");
+      });
+    });
+
+    const submitBtn = document.querySelector("#form-consulta button[type=submit]");
+    function showErr(msg) {
+      let box = document.getElementById("consulta-err");
+      if (!box) {
+        box = document.createElement("div");
+        box.id = "consulta-err";
+        box.className = "alert alert--danger mt-2";
+        document.getElementById("form-consulta").appendChild(box);
+      }
+      box.innerHTML = `<div>${msg}</div>`;
+    }
+
     document.getElementById("form-consulta").onsubmit = async (e) => {
       e.preventDefault();
       if (!document.getElementById("autorizo").checked) return;
-      const cnj = document.getElementById("cnj").value;
       const cpf = document.getElementById("cpf-consulta").value;
-      const advogadoTextoEl = document.getElementById("advogado");
-      const advogadoTexto = advogadoTextoEl ? advogadoTextoEl.value : null;
+      const advEl = document.getElementById("advogado");
+      const advogadoTexto = advEl ? advEl.value : null;
+      const cnj = (modo === "numero") ? (document.getElementById("cnj").value || "").trim() : "";
+      const anexoFile = (modo === "anexar") ? document.getElementById("anexo").files[0] : null;
 
-      submitBtnConsulta.disabled = true;
-      submitBtnConsulta.textContent = "Iniciando análise…";
+      if (modo === "numero" && !cnj) { showErr("Informe o número do processo (CNJ)."); return; }
+      if (modo === "anexar" && !anexoFile) { showErr("Anexe o documento do processo."); return; }
+      if (anexoFile && anexoFile.size > 10 * 1024 * 1024) { showErr("Arquivo maior que 10 MB."); return; }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Enviando…";
 
       try {
-        // "Buscar ou criar" o processo pelo CNJ (CNJ é único na tabela).
-        // Se já existe um processo com esse CNJ, a operação passa a apontar
-        // para ele (vários credores podem antecipar do mesmo processo).
+        // Processo: buscar/criar pelo CNJ (quando informado)
         let processoId = op.processoId;
-        const existente = await Processos.getByCnj(cnj);
-
-        if (existente) {
-          // Reaproveita o processo existente
-          processoId = existente.id;
-          await Operacoes.update(op.id, { processoId });
-        } else if (processoId) {
-          // Atualiza o processo (vazio) criado no início com o CNJ
-          await Processos.update(processoId, { numeroCnj: cnj });
-        } else {
-          const novo = await Processos.create({ numeroCnj: cnj });
-          processoId = novo.id;
-          await Operacoes.update(op.id, { processoId });
+        if (cnj) {
+          const existente = await Processos.getByCnj(cnj);
+          if (existente) { processoId = existente.id; await Operacoes.update(op.id, { processoId }); }
+          else if (processoId) { await Processos.update(processoId, { numeroCnj: cnj }); }
+          else { const novo = await Processos.create({ numeroCnj: cnj }); processoId = novo.id; await Operacoes.update(op.id, { processoId }); }
         }
 
+        // Anexo do processo → Storage
+        let anexoInfo = null;
+        if (anexoFile) {
+          const userId = Auth.currentUser().id;
+          const safe = anexoFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+          const path = `${userId}/${op.id}/processo-${Date.now()}-${safe}`;
+          const { error: upErr } = await Auth.client().storage
+            .from("comprovantes")
+            .upload(path, anexoFile, { cacheControl: "3600", upsert: false, contentType: anexoFile.type || "application/octet-stream" });
+          if (upErr) throw upErr;
+          const { data: signed } = await Auth.client().storage
+            .from("comprovantes").createSignedUrl(path, 60 * 60 * 24 * 365);
+          anexoInfo = { nome: anexoFile.name, path, url: signed?.signedUrl, enviadoEm: new Date().toISOString() };
+        }
+
+        // Marca como "aguardando equipe" — SEM gerar oferta (backoffice faz isso)
         await Operacoes.update(op.id, {
           cpfTitular: cpf,
           advogadoTexto,
+          anexoProcesso: anexoInfo,
           autorizouConsulta: true,
           autorizadoEm: new Date().toISOString(),
-          analiseStatus: "processando",
+          analiseStatus: "aguardando_equipe",
         });
 
         const fresh = await Operacoes.get(op.id);
         await render(fresh);
       } catch (err) {
-        console.error("Erro ao iniciar análise:", err);
-        // mostra erro visível
-        const errBox = document.createElement("div");
-        errBox.className = "alert alert--danger mt-2";
-        errBox.innerHTML = `<div><strong>Erro ao iniciar análise:</strong> ${err.message || err}<br>
-          Tente de novo. Se persistir, verifica F12 → Console.</div>`;
-        document.getElementById("form-consulta").appendChild(errBox);
-        submitBtnConsulta.disabled = false;
-        submitBtnConsulta.textContent = "Autorizar e iniciar análise →";
+        console.error("Erro ao enviar para análise:", err);
+        showErr(`<strong>Erro:</strong> ${err.message || err}`);
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Autorizar e enviar para análise →";
       }
     };
   }
 
-  function renderProcessando(target, op) {
+  // Tela de espera: análise é feita pela equipe (backoffice), não automática.
+  function renderAguardandoEquipe(target, op) {
     target.innerHTML = `
-      <h2>Analisando o seu processo</h2>
+      <h2>Recebemos o seu processo! 🎯</h2>
       <p class="muted">
-        Estamos consultando os andamentos do processo, identificando a fase atual,
-        decisões já proferidas e calculando o valor base${isSoHonorarios(op) ? " dos honorários" : " da causa"}.
-      </p>
-      <div class="spinner"></div>
-      <div class="loading-text" id="loading-msg">Consultando o seu processo…</div>
-    `;
-    const msgs = [
-      "Consultando o seu processo…",
-      "Lendo os últimos andamentos…",
-      "Identificando decisões e despachos…",
-      "Identificando a fase processual atual…",
-      "Calculando o valor base…",
-      "Estimando a classe de risco…",
-    ];
-    const el = document.getElementById("loading-msg");
-    let i = 0;
-    const itv = setInterval(() => {
-      i++;
-      if (i < msgs.length) el.textContent = msgs[i];
-    }, 900);
-
-    setTimeout(async () => {
-      clearInterval(itv);
-      // Gerar análise + oferta (mock)
-      const valorDeclarado = op.valorEstimado || 10000;
-      const seed = (op.id || "").replace(/\D/g, "").slice(-3);
-      const n = parseInt(seed || "500", 10);
-      const desvio = ((n % 30) - 15) / 100;
-      const valorBaseCausa = Math.round(valorDeclarado * (1 + desvio));
-
-      const k = n % 100;
-      const classe = k < 25 ? "B" : k < 60 ? "C" : k < 85 ? "D" : "E";
-      const desconto = { A: 0.10, B: 0.18, C: 0.28, D: 0.40, E: 0.55 }[classe];
-      const valorAntecipado = Math.round(valorBaseCausa * (1 - desconto));
-
-      const analise = {
-        valorBaseCausa,
-        fase: "Em fase de cumprimento de sentença",
-        decisao: "Sentença favorável transitada em julgado",
-        classe,
-        confianca: 0.82,
-      };
-
-      try {
-        await Operacoes.update(op.id, { analise });
-        await Ofertas.create({
-          operacaoId: op.id,
-          valorBaseCausa,
-          valorAntecipado,
-          descontoPct: desconto,
-          validadeDias: 7,
-          memorial: { classe, desconto, valorDeclarado, valorBaseCausa },
-        });
-
-        if (isAsyncAnalise(op)) {
-          await Operacoes.update(op.id, { analiseStatus: "aguardando_async" });
-          const fresh = await Operacoes.get(op.id);
-          await render(fresh);
-        } else {
-          await Operacoes.update(op.id, { analiseStatus: "concluida" });
-          await advance(op, "oferta");
-        }
-      } catch (err) {
-        console.error(err);
-        target.innerHTML = `<div class="alert alert--danger"><div>Falha ao gerar oferta: ${err.message || err}</div></div>`;
-      }
-    }, 4800);
-  }
-
-  function renderAguardandoAsync(target, op) {
-    target.innerHTML = `
-      <h2>Análise mais detalhada em andamento</h2>
-      <p class="muted">
-        O seu processo precisa de uma análise um pouco mais cuidadosa. Tudo certo, isso é normal —
-        nosso time vai concluir a análise e <strong>você será notificado(a) por e-mail</strong>
-        assim que a proposta estiver pronta.
+        A nossa equipe vai analisar o seu processo e preparar uma proposta de antecipação.
+        Você será avisado(a) por e-mail em <strong>${Auth.currentUser().email}</strong> assim que
+        a proposta estiver pronta.
       </p>
       <div class="card mt-3">
-        <h3>Próximos passos</h3>
+        <h3>O que acontece agora</h3>
         <ul style="font-size:.96rem;">
-          <li>📩 Você recebe um e-mail em <strong>${Auth.currentUser().email}</strong> assim que a proposta sair (geralmente em até 24h).</li>
-          <li>📊 Você pode acompanhar o status no painel a qualquer momento.</li>
-          <li>❓ Se preferir, fale com nosso time pelo <a href="../index.html#contato">canal de suporte</a>.</li>
+          <li>🔎 Consultamos o andamento e analisamos o seu processo.</li>
+          <li>💡 Geramos uma proposta de antecipação personalizada.</li>
+          <li>📩 Você recebe um aviso para ver e aceitar a proposta.</li>
         </ul>
+        <p class="muted" style="font-size:.88rem; margin: 8px 0 0;">Prazo típico: de algumas horas a 1 dia útil.</p>
+      </div>
+      <div class="alert mt-3">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <div>Status atual: <strong>Em análise pela equipe.</strong></div>
       </div>
       <div class="journey-actions">
         <a href="dashboard.html" class="btn btn--primary">Voltar ao painel</a>
-        <button class="btn btn--ghost" id="btn-simular-pronto">[demo] Simular notificação recebida</button>
       </div>
     `;
-    document.getElementById("btn-simular-pronto").onclick = async () => {
-      await Operacoes.update(op.id, { analiseStatus: "concluida" });
-      await advance(op, "oferta");
-    };
   }
 
   function labelEscolha(escolha) {

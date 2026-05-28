@@ -99,6 +99,7 @@ create table public.operacoes (
   apelido             text,
   descricao           text,
   valor_estimado      numeric,              -- valor a antecipar (causa total para cliente; honorários para advogado)
+  anexo_processo      jsonb,                -- doc do processo anexado pelo cliente (quando informa por anexo)
   advogado_texto      text,                 -- nome do advogado quando ainda não é pessoa cadastrada
   cpf_titular         text,                 -- CPF do titular do processo (informado na etapa de análise)
 

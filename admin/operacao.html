@@ -87,6 +87,26 @@
 
     const ofertaAtual = ofertas.find(o => o.status === "ativa" || o.status === "aceita") || ofertas[0];
     const stageIdx = idxOf(op.estagio);
+
+    // Trava de avanço: não pode avançar a etapa até a ação do cliente estar pronta.
+    const gateMsg = (() => {
+      switch (op.estagio) {
+        case "consultaAnalise":
+          if (!ofertas.length) return "Rode a análise para gerar uma proposta antes de avançar para Oferta.";
+          return null;
+        case "oferta":
+          if (!ofertas.some(o => o.status === "aceita")) return "Aguardando o cliente ACEITAR a proposta.";
+          return null;
+        case "assinatura":
+          if (!assinaturas.length) return "Aguardando o cliente ASSINAR o contrato.";
+          return null;
+        case "protocolacao":
+          if (!op.protocolacao?.comprovanteEnviado) return "Aguardando o cliente ENVIAR os documentos de protocolação.";
+          return null;
+        default:
+          return null;
+      }
+    })();
     const notas = Array.isArray(op.notasInternas) ? op.notasInternas : [];
     const hist = Array.isArray(op.historico) ? op.historico : [];
     const prot = op.protocolacao || {};
@@ -190,9 +210,10 @@
           <div class="admin-section">
             <h3>Mover etapa</h3>
             <p class="muted" style="font-size:.88rem;">Etapa atual: <strong>${ETAPAS[stageIdx]?.label || op.estagio}</strong></p>
+            ${gateMsg ? `<div class="alert alert--warn" style="margin-bottom:12px;"><div>🔒 ${gateMsg}</div></div>` : ""}
             <div class="action-row">
               <button class="btn btn--ghost" id="btn-voltar" ${stageIdx<=0?"disabled":""}>← Voltar etapa</button>
-              <button class="btn btn--primary" id="btn-avancar" ${stageIdx>=ETAPAS.length-1?"disabled":""}>Avançar etapa →</button>
+              <button class="btn btn--primary" id="btn-avancar" ${(stageIdx>=ETAPAS.length-1 || gateMsg)?"disabled":""}>Avançar etapa →</button>
             </div>
             <div class="field mt-2">
               <label class="field__label" for="goto-stage">Ir direto para etapa</label>
@@ -200,7 +221,8 @@
                 ${ETAPAS.map(e => `<option value="${e.id}" ${e.id===op.estagio?"selected":""}>${e.label}</option>`).join("")}
               </select>
             </div>
-            <button class="btn btn--ghost btn--block mt-1" id="btn-goto">Aplicar etapa selecionada</button>
+            <button class="btn btn--ghost btn--block mt-1" id="btn-goto" ${gateMsg?"disabled":""}>Aplicar etapa selecionada</button>
+            ${gateMsg ? `<p class="muted" style="font-size:.78rem; margin-top:6px;">Avanço bloqueado até a ação do cliente. (Voltar etapa continua liberado.)</p>` : ""}
           </div>
 
           <div class="admin-section">
