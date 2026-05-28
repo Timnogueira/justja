@@ -501,23 +501,64 @@ const Admin = (() => {
   }
 
   // Lista TODAS as operações (RLS de staff permite). Inclui joins úteis.
+  // Tenta embutir o solicitante (pessoas); se a sintaxe de FK falhar, degrada
+  // pra query simples e enriquece o solicitante manualmente.
   async function listOperacoes() {
-    const { data, error } = await _db()
+    let { data, error } = await _db()
       .from("operacoes")
       .select("*, processos(*), solicitante:pessoas!solicitante_id(*)")
       .order("updated_at", { ascending: false });
-    if (error) { console.error("Admin.listOperacoes", error); throw error; }
+
+    if (error) {
+      console.warn("listOperacoes embed falhou, usando fallback:", error.message);
+      const res = await _db()
+        .from("operacoes")
+        .select("*, processos(*)")
+        .order("updated_at", { ascending: false });
+      if (res.error) { console.error("Admin.listOperacoes", res.error); throw res.error; }
+      data = await _enrichSolicitantes(res.data);
+    }
     return data.map(_rowToObj);
   }
 
   async function getOperacao(id) {
-    const { data, error } = await _db()
+    let { data, error } = await _db()
       .from("operacoes")
       .select("*, processos(*), solicitante:pessoas!solicitante_id(*), cliente:pessoas!cliente_id(*), advogado:pessoas!advogado_id(*)")
       .eq("id", id)
       .maybeSingle();
-    if (error) { console.error("Admin.getOperacao", error); throw error; }
+
+    if (error) {
+      console.warn("getOperacao embed falhou, usando fallback:", error.message);
+      const res = await _db().from("operacoes").select("*, processos(*)").eq("id", id).maybeSingle();
+      if (res.error) { console.error("Admin.getOperacao", res.error); throw res.error; }
+      data = res.data;
+      if (data) {
+        const [enriched] = await _enrichSolicitantes([data]);
+        data = enriched;
+      }
+    }
     return _rowToObj(data);
+  }
+
+  // Busca os nomes/contatos das pessoas referenciadas e anexa como
+  // `solicitante` / `cliente` / `advogado` em cada operação.
+  async function _enrichSolicitantes(ops) {
+    const ids = new Set();
+    ops.forEach(o => {
+      ["solicitante_id", "cliente_id", "advogado_id"].forEach(k => { if (o[k]) ids.add(o[k]); });
+    });
+    if (ids.size === 0) return ops;
+    const { data: pessoas } = await _db()
+      .from("pessoas").select("*").in("id", [...ids]);
+    const map = {};
+    (pessoas || []).forEach(p => { map[p.id] = p; });
+    ops.forEach(o => {
+      o.solicitante = map[o.solicitante_id] || null;
+      o.cliente = map[o.cliente_id] || null;
+      o.advogado = map[o.advogado_id] || null;
+    });
+    return ops;
   }
 
   async function getOfertas(operacaoId) {
