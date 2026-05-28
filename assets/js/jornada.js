@@ -76,9 +76,10 @@ const Jornada = (() => {
   }
 
   function getStageFromQueryOrOp(op) {
-    const u = new URL(window.location.href);
-    const q = u.searchParams.get("stage");
-    if (q && ESTAGIOS.find(e => e.id === q)) return q;
+    // A fonte da verdade é SEMPRE o estágio atual da operação no banco.
+    // Ignoramos o ?stage= da URL de propósito: se o backoffice mover a etapa
+    // (pra frente ou pra trás), o cliente vê o estado correto ao recarregar,
+    // sem ficar preso numa etapa defasada da URL.
     return op?.estagio || "cadastro";
   }
 
