@@ -289,6 +289,10 @@
       body * { visibility: hidden; }
       #proposta-print, #proposta-print * { visibility: visible; }
       #proposta-print { position: fixed; inset: 0; padding: 40px; background: white; }
+      body.print-dossie #modal-dossie, body.print-dossie #modal-dossie * { visibility: visible; }
+      body.print-dossie #modal-dossie { position: absolute; inset: 0; display: block !important; background: white; padding: 0; overflow: visible; }
+      body.print-dossie #modal-dossie .modal { box-shadow: none; max-height: none !important; overflow: visible !important; width: 100%; max-width: 100%; border-radius: 0; }
+      body.print-dossie #modal-dossie .modal-actions, body.print-dossie #dossie-refresh-btn, body.print-dossie #dossie-print-btn { display: none !important; }
     }
     #proposta-print {
       display: none;
@@ -557,7 +561,10 @@
   <div class="modal modal-wide" onclick="event.stopPropagation()">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:4px">
       <h2 id="dossie-title" style="margin:0">Dossiê do processo</h2>
-      <button class="btn btn-ghost" id="dossie-refresh-btn" onclick="recarregarDossie()" title="Recarregar" style="font-size:1rem;padding:4px 10px">↺ Atualizar</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost" id="dossie-print-btn" onclick="imprimirDossie()" title="Imprimir / salvar PDF" style="font-size:1rem;padding:4px 10px">🖨 PDF</button>
+        <button class="btn btn-ghost" id="dossie-refresh-btn" onclick="recarregarDossie()" title="Recarregar" style="font-size:1rem;padding:4px 10px">↺ Atualizar</button>
+      </div>
     </div>
     <div id="dossie-body">
       <div class="dossie-loading">Consultando DataJud e DJEN...</div>
@@ -1186,6 +1193,12 @@
 
   function recarregarDossie() {
     if (_dossieAtualId) consultarProcesso(_dossieAtualId);
+  }
+
+  function imprimirDossie() {
+    document.body.classList.add('print-dossie');
+    window.print();
+    document.body.classList.remove('print-dossie');
   }
 
   async function consultarProcesso(id) {
