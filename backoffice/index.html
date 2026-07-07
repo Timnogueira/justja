@@ -1155,7 +1155,17 @@
 
   function fmtDataHora(dh) {
     if (!dh || dh.length < 8) return '—';
-    return `${dh.substring(6,8)}/${dh.substring(4,6)}/${dh.substring(0,4)}`;
+    if (dh.includes('-')) { // ISO: 2025-10-16T00:00:00.000Z
+      const d = new Date(dh);
+      return isNaN(d) ? '—' : d.toLocaleDateString('pt-BR');
+    }
+    return `${dh.substring(6,8)}/${dh.substring(4,6)}/${dh.substring(0,4)}`; // YYYYMMDD
+  }
+
+  function limparHtml(html) { // remove tags E decodifica entidades (&Iacute; etc.) sem executar nada
+    if (!html) return '';
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
   }
 
   function fmtData(iso) {
@@ -1204,7 +1214,7 @@
       .then(r => r.json()), 5
     ).catch(e => ({ _erro: e.message }));
 
-    const djPromise = fetch(`/api/processo?numero=${encodeURIComponent(caso.numero_processo)}`)
+    const djPromise = fetch(`/api/processo?numero=${encodeURIComponent(caso.numero_processo)}&apenas=datajud`)
       .then(r => r.ok ? r.json() : null).catch(() => null);
 
     // Renderiza com DJEN assim que chegar (sem esperar DataJud)
@@ -1252,7 +1262,7 @@
   function retryDatajud(numeroProcesso) {
     const djEl = document.getElementById('dossie-dj-section');
     if (djEl) djEl.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:var(--muted);font-size:0.82rem"><span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 1s linear infinite"></span> Buscando movimentações no DataJud...</div>';
-    fetch(`/api/processo?numero=${encodeURIComponent(numeroProcesso)}`)
+    fetch(`/api/processo?numero=${encodeURIComponent(numeroProcesso)}&apenas=datajud`)
       .then(r => r.json())
       .then(data => aplicarDatajud(data, numeroProcesso))
       .catch(() => aplicarDatajud(null, numeroProcesso));
@@ -1262,7 +1272,7 @@
     const djenItems = djen?.items || [];
 
     // ── Extrações do DJEN ──
-    const textoGeral = djenItems.map(i => (i.texto || '') + ' ' + (i.tipoComunicacao || '')).join(' ').toLowerCase();
+    const textoGeral = djenItems.map(i => limparHtml(i.texto) + ' ' + (i.tipoComunicacao || '')).join(' ').toLowerCase();
 
     // ── Partes estruturadas do DJEN (destinatarios: polo A=autor, P=réu) ──
     const autoresDJEN = [...new Set(djenItems.flatMap(i => (i.destinatarios||[]).filter(d => d.polo === 'A').map(d => d.nome)))];
@@ -1293,7 +1303,7 @@
     // Valor da condenação: regex no texto da sentença (prioriza contexto "conden…"), fallback base
     let valorDJEN = null;
     if (pubSentenca?.texto) {
-      const txtLimpo = pubSentenca.texto.replace(/<[^>]*>/g,' ');
+      const txtLimpo = limparHtml(pubSentenca.texto);
       const mCond = txtLimpo.match(/conden[a-zçã]*[^.]{0,200}?R\$\s*([\d.]+,\d{2})/i);
       const m = mCond || txtLimpo.match(/R\$\s*([\d.]+,\d{2})/);
       if (m) valorDJEN = 'R$ ' + m[1];
@@ -1391,7 +1401,7 @@
       const ordem = [...djenItems].sort((a,b) => (a.data_disponibilizacao||'').localeCompare(b.data_disponibilizacao||''));
       html += `<div class="dossie-section"><h3>Comunicações DJEN (${djen?.count || djenItems.length} total)</h3>`;
       ordem.forEach(it => {
-        const txt = (it.texto || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+        const txt = limparHtml(it.texto);
         const isSent = /sentença|procedên|procedente|improcedente/i.test(txt);
         const isRec  = /recurso|apelação|remessa/i.test(txt);
         const borda  = isSent ? 'border-left:3px solid var(--green);background:#f0fdf4'

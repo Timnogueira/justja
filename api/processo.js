@@ -30,7 +30,7 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { numero } = req.query;
+  const { numero, apenas } = req.query;
   if (!numero) return res.status(400).json({ erro: 'numero required' });
 
   const digits = numero.replace(/\D/g, '');
@@ -38,44 +38,48 @@ module.exports = async function handler(req, res) {
 
   const result = { datajud: null, djen: null };
 
-  // Orçamento total < 60s (maxDuration Vercel). DataJud: 2×22s. DJEN: 1×20s (browser tem retry próprio).
-  const [djRes, djenRes] = await Promise.allSettled([
-    comRetry(() => fetchComTimeout(
-      'https://api-publica.datajud.cnj.jus.br/api_publica_tjsp/_search',
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `APIKey ${DATAJUD_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ size: 1, query: { term: { numeroProcesso: digits } } })
+  const pDatajud = comRetry(() => fetchComTimeout(
+    'https://api-publica.datajud.cnj.jus.br/api_publica_tjsp/_search',
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `APIKey ${DATAJUD_KEY}`,
+        'Content-Type': 'application/json'
       },
-      22000
-    ), 2),
+      body: JSON.stringify({ size: 1, query: { term: { numeroProcesso: digits } } })
+    },
+    22000
+  ), 2);
 
-    comRetry(() => fetchComTimeout(
-      `https://comunicaapi.pje.jus.br/api/v1/comunicacao?numeroProcesso=${digits}&pagina=1&itensPorPagina=100`,
-      {
-        headers: {
-          'Accept': 'application/json',
-          'Accept-Language': 'pt-BR,pt;q=0.9',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-        }
-      },
-      20000
-    ), 1),
-  ]);
+  // apenas=datajud: browser já tem o DJEN — responder assim que o DataJud voltar (sem esperar DJEN)
+  const pDjen = apenas === 'datajud' ? null : comRetry(() => fetchComTimeout(
+    `https://comunicaapi.pje.jus.br/api/v1/comunicacao?numeroProcesso=${digits}&pagina=1&itensPorPagina=100`,
+    {
+      headers: {
+        'Accept': 'application/json',
+        'Accept-Language': 'pt-BR,pt;q=0.9',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+      }
+    },
+    20000
+  ), 1);
+
+  const [djRes, djenRes] = await Promise.allSettled([pDatajud, pDjen ?? Promise.resolve(null)]);
 
   if (djRes.status === 'fulfilled' && djRes.value.ok) {
     try { result.datajud = await djRes.value.json(); } catch { result.erroDatajud = 'parse error'; }
+  } else if (djRes.status === 'rejected') {
+    result.erroDatajud = djRes.reason?.message || 'erro';
   } else {
-    result.erroDatajud = djRes.reason?.message || `HTTP ${djRes.value?.status}`;
+    result.erroDatajud = `HTTP ${djRes.value?.status}`;
   }
 
-  if (djenRes.status === 'fulfilled' && djenRes.value.ok) {
-    try { result.djen = await djenRes.value.json(); } catch { result.erroDjen = 'parse error'; }
-  } else {
-    result.erroDjen = djenRes.reason?.message || `HTTP ${djenRes.value?.status}`;
+  if (pDjen) {
+    if (djenRes.status === 'fulfilled' && djenRes.value?.ok) {
+      try { result.djen = await djenRes.value.json(); } catch { result.erroDjen = 'parse error'; }
+    } else {
+      result.erroDjen = djenRes.reason?.message || `HTTP ${djenRes.value?.status}`;
+    }
   }
 
   return res.json(result);
