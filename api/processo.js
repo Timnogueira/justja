@@ -13,6 +13,19 @@ async function fetchComTimeout(url, opts, ms) {
   }
 }
 
+async function comRetry(fn, tentativas) {
+  let ultimo;
+  for (let i = 0; i < tentativas; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      ultimo = e;
+      if (i < tentativas - 1) await new Promise(r => setTimeout(r, 1500));
+    }
+  }
+  throw ultimo;
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -26,7 +39,8 @@ module.exports = async function handler(req, res) {
   const result = { datajud: null, djen: null };
 
   const [djRes, djenRes] = await Promise.allSettled([
-    fetchComTimeout(
+    // DataJud: timeout 35s, 2 tentativas
+    comRetry(() => fetchComTimeout(
       'https://api-publica.datajud.cnj.jus.br/api_publica_tjsp/_search',
       {
         method: 'POST',
@@ -34,21 +48,23 @@ module.exports = async function handler(req, res) {
           'Authorization': `APIKey ${DATAJUD_KEY}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ query: { term: { 'numeroProcesso.keyword': digits } }, size: 1 })
+        body: JSON.stringify({ size: 1, query: { term: { numeroProcesso: digits } } })
       },
-      25000
-    ),
-    fetchComTimeout(
-      `https://comunicaapi.pje.jus.br/api/v1/comunicacao?numeroProcesso=${digits}&pagina=1&itensPorPagina=5`,
+      35000
+    ), 2),
+
+    // DJEN: timeout 45s, 5 tentativas (API instável)
+    comRetry(() => fetchComTimeout(
+      `https://comunicaapi.pje.jus.br/api/v1/comunicacao?numeroProcesso=${digits}&pagina=1&itensPorPagina=100`,
       {
         headers: {
-          'Accept': 'application/json, text/plain, */*',
-          'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Accept': 'application/json',
+          'Accept-Language': 'pt-BR,pt;q=0.9',
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
         }
       },
-      10000
-    )
+      45000
+    ), 5),
   ]);
 
   if (djRes.status === 'fulfilled' && djRes.value.ok) {
