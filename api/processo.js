@@ -34,7 +34,7 @@ module.exports = async function handler(req, res) {
           'Authorization': `APIKey ${DATAJUD_KEY}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ query: { term: { numeroProcesso: digits } }, size: 1 })
+        body: JSON.stringify({ query: { term: { 'numeroProcesso.keyword': digits } }, size: 1 })
       },
       25000
     ),
