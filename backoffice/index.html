@@ -626,7 +626,7 @@
       </div>
       <div class="form-group">
         <label>Prazo estimado de pagamento</label>
-        <input type="text" id="p-prazo-pag" placeholder="24 horas após assinatura" value="24 horas após assinatura" />
+        <input type="text" id="p-prazo-pag" placeholder="24 horas após o aceite" value="24 horas após o aceite" />
       </div>
     </div>
     <div class="form-group">
@@ -1587,9 +1587,9 @@
     const vProposta = document.getElementById('p-valor-proposta').value || '—';
     const validade = document.getElementById('p-validade').value || '7 dias';
     const taxa = document.getElementById('p-taxa').value || '—';
-    const prazoPag = document.getElementById('p-prazo-pag').value || '24 horas após assinatura';
+    const prazoPag = document.getElementById('p-prazo-pag').value || '24 horas após o aceite';
     document.getElementById('preview-area').innerHTML = `
-      <h3>Proposta de Cessão de Crédito</h3>
+      <h3>Proposta Comercial de Antecipação de Crédito</h3>
       <div class="linha"><span>Cliente:</span><strong>${esc(c.nome)}</strong></div>
       <div class="linha"><span>Processo:</span><strong>${esc(c.numero_processo) || '—'}</strong></div>
       <div class="linha"><span>Tipo:</span><strong>${esc(c.tipo_processo) || '—'}</strong></div>
@@ -1611,7 +1611,7 @@
     const vProposta = document.getElementById('p-valor-proposta').value || '—';
     const validade = document.getElementById('p-validade').value || '7 dias';
     const taxa = document.getElementById('p-taxa').value || '—';
-    const prazoPag = document.getElementById('p-prazo-pag').value || '24 horas após assinatura';
+    const prazoPag = document.getElementById('p-prazo-pag').value || '24 horas após o aceite';
     const condicoes = document.getElementById('p-condicoes').value;
     const hoje = new Date().toLocaleDateString('pt-BR');
 
