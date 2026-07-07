@@ -763,6 +763,7 @@
           <div style="font-size:0.7rem;color:var(--muted)">${esc(l.numero_processo||'')}</div>
           <div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">
             ${waBtn}
+            ${l.status==='pendente' ? `<button class="btn-sm" onclick="updateLeadStatus('${l.id}','enviado')" style="background:#e0e7ff;color:#3730a3;font-weight:700" title="Marcar como enviado sem abrir WA">✓ Enviado</button>` : ''}
             <button class="btn-sm" onclick="abrirDossieFromLead('${l.id}')" title="Gerar dossiê" style="padding:4px 8px">🔍</button>
             ${l.status==='enviado' ? `<button class="btn-sm" onclick="updateLeadStatus('${l.id}','retornou')" style="background:#d1fae5">✓ Retornou</button>` : ''}
             ${l.status==='retornou' ? `<button class="btn-sm" style="background:#fef3c7" onclick="converterEmCaso('${l.id}')">→ Caso</button>` : ''}
