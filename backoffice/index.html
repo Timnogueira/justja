@@ -852,7 +852,7 @@
     const payload = {
       nome: l.autor_nome, numero_processo: l.numero_processo,
       telefone: tel, valor_estimado: l.valor_reais ? `R$ ${Number(l.valor_reais).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : '',
-      status: 'recebido', origem: 'disparo',
+      status: 'recebido', origem: 'manual',
       observacao: `[${new Date().toLocaleString('pt-BR')}] Importado de disparo · Réu: ${reu} · Cidade: ${l.cidade||'—'} · Tier ${l.reu_tier||'—'} · Cat. ${l.categoria||'—'}`
     };
     const { error } = await db.from('justja_casos').insert([payload]);
