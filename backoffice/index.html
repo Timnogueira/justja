@@ -754,7 +754,7 @@
       const msg = l.mensagem ? `<span class="msg-preview" title="${esc(l.mensagem)}">${esc(l.mensagem)}</span>` : '—';
 
       const waBtn = waLink
-        ? `<a href="${waLink}" target="_blank" class="btn-wa" onclick="marcarEnviado('${l.id}')">💬 WhatsApp</a>`
+        ? `<a href="${waLink}" target="_blank" class="btn-wa">💬 WhatsApp</a>`
         : `<button class="btn-wa" style="background:#128c7e" onclick="abrirWaSemTel('${l.id}')">💬 Digitar nº</button>`;
 
       return `<tr>
@@ -763,9 +763,9 @@
           <div style="font-size:0.7rem;color:var(--muted)">${esc(l.numero_processo||'')}</div>
           <div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">
             ${waBtn}
-            ${l.status==='pendente' ? `<button class="btn-sm" onclick="updateLeadStatus('${l.id}','enviado')" style="background:#e0e7ff;color:#3730a3;font-weight:700" title="Marcar como enviado sem abrir WA">✓ Enviado</button>` : ''}
+            ${l.status==='pendente' ? `<button class="btn-sm" onclick="updateLeadStatus('${l.id}','enviado')" style="background:#e0e7ff;color:#3730a3;font-weight:700">✓ Enviado</button>` : ''}
             <button class="btn-sm" onclick="abrirDossieFromLead('${l.id}')" title="Gerar dossiê" style="padding:4px 8px">🔍</button>
-            ${l.status==='enviado' ? `<button class="btn-sm" onclick="updateLeadStatus('${l.id}','retornou')" style="background:#d1fae5">✓ Retornou</button>` : ''}
+            ${l.status==='enviado' ? `<button class="btn-sm" onclick="updateLeadStatus('${l.id}','retornou')" style="background:#d1fae5">? Retornou</button>` : ''}
             ${l.status==='retornou' ? `<button class="btn-sm" style="background:#fef3c7" onclick="converterEmCaso('${l.id}')">→ Caso</button>` : ''}
           </div>
         </td>
