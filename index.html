@@ -215,19 +215,44 @@
       width: 100%; height: 56px; background: transparent;
       font-family: inherit;
     }
+    .sim-calcular {
+      width: 100%; max-width: 420px; margin: 0 auto;
+      display: block; padding: 14px;
+      background: var(--navy); color: white;
+      border: none; border-radius: 12px;
+      font-weight: 700; font-size: 1rem; cursor: pointer;
+      transition: background .2s; margin-top: 4px;
+    }
+    .sim-calcular:hover { background: var(--navy-light); }
+    .sim-calcular:disabled { opacity: .6; cursor: not-allowed; }
     .sim-result {
       background: white; border-radius: 16px; padding: 28px;
-      margin-top: 4px; display: none;
+      margin-top: 16px; display: none;
       border: 1px solid var(--border);
     }
     .sim-result.visible { display: block; }
+    .sim-loading {
+      display: flex; align-items: center; justify-content: center;
+      gap: 12px; color: var(--muted); font-size: 0.9rem; padding: 8px 0;
+    }
+    .sim-spinner {
+      width: 20px; height: 20px; border-radius: 50%;
+      border: 2px solid var(--border); border-top-color: var(--navy);
+      animation: spin .7s linear infinite; flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
     .sim-result-label { font-size: 0.82rem; color: var(--muted); margin-bottom: 6px; }
     .sim-range {
       font-size: 2rem; font-weight: 800; color: var(--navy);
       margin-bottom: 4px;
     }
     .sim-range span { color: #3b5bdb; }
-    .sim-sub { font-size: 0.82rem; color: var(--muted); margin-bottom: 20px; }
+    .sim-disclaimer {
+      font-size: 0.78rem; color: var(--muted);
+      background: #fffbec; border: 1px solid #f0e0a0;
+      border-radius: 8px; padding: 10px 14px;
+      margin: 14px 0 20px; line-height: 1.5; text-align: left;
+    }
     .sim-cta {
       display: inline-block; background: var(--gold); color: var(--navy);
       padding: 12px 28px; border-radius: 24px; font-weight: 700;
@@ -501,15 +526,22 @@
       <p style="font-weight:600; color:var(--navy); font-size:0.95rem;">Qual é o valor total do seu processo?</p>
       <div class="sim-input-wrap">
         <span class="sim-prefix">R$</span>
-        <input type="text" id="sim-valor" placeholder="0,00" inputmode="numeric" oninput="calcSim(this)" />
+        <input type="text" id="sim-valor" placeholder="0,00" inputmode="numeric" oninput="formatSimValor(this)" onkeydown="if(event.key==='Enter') calcSim()" />
       </div>
+      <button class="sim-calcular" id="sim-btn" onclick="calcSim()">Simular agora</button>
       <div class="sim-result" id="sim-result">
-        <div class="sim-result-label">Estimativa de recebimento à vista</div>
-        <div class="sim-range">
-          <span id="sim-min">—</span> a <span id="sim-max">—</span>
+        <div class="sim-loading" id="sim-loading">
+          <div class="sim-spinner"></div>
+          <span>Calculando estimativa...</span>
         </div>
-        <div class="sim-sub">Valor final depende da análise do processo. Sem taxas ocultas.</div>
-        <button class="sim-cta" onclick="irParaForm()">Quero receber minha proposta →</button>
+        <div id="sim-resultado" style="display:none">
+          <div class="sim-result-label">Estimativa de recebimento à vista</div>
+          <div class="sim-range">
+            <span id="sim-min">—</span> a <span id="sim-max">—</span>
+          </div>
+          <div class="sim-disclaimer">⚠️ Estimativa sujeita à análise individual do processo. O valor final pode variar conforme o tipo de causa, estágio processual e documentação apresentada.</div>
+          <button class="sim-cta" onclick="irParaForm()">Quero receber minha proposta →</button>
+        </div>
       </div>
     </div>
   </div>
@@ -643,20 +675,41 @@
   function formatBRL(n) {
     return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
-  function calcSim(el) {
-    // formata enquanto digita
+  function formatSimValor(el) {
     let raw = el.value.replace(/\D/g,'');
-    if (!raw) { el.value = ''; document.getElementById('sim-result').classList.remove('visible'); return; }
-    let num = parseInt(raw) / 100;
-    el.value = formatBRL(num);
-    if (num < 100) { document.getElementById('sim-result').classList.remove('visible'); return; }
-    const min = num * 0.60;
-    const max = num * 0.92;
-    document.getElementById('sim-min').textContent = 'R$ ' + formatBRL(min);
-    document.getElementById('sim-max').textContent = 'R$ ' + formatBRL(max);
-    document.getElementById('sim-result').classList.add('visible');
-    // guarda valor para pré-preencher form
-    window._simValor = 'R$ ' + formatBRL(num);
+    if (!raw) { el.value = ''; return; }
+    el.value = formatBRL(parseInt(raw) / 100);
+  }
+
+  function calcSim() {
+    const el = document.getElementById('sim-valor');
+    const raw = el.value.replace(/\D/g,'');
+    if (!raw) { el.focus(); return; }
+    const num = parseInt(raw) / 100;
+    if (num < 100) { el.focus(); return; }
+
+    const btn = document.getElementById('sim-btn');
+    const result = document.getElementById('sim-result');
+    const loading = document.getElementById('sim-loading');
+    const resultado = document.getElementById('sim-resultado');
+
+    btn.disabled = true;
+    btn.textContent = 'Calculando...';
+    result.classList.add('visible');
+    loading.style.display = 'flex';
+    resultado.style.display = 'none';
+
+    setTimeout(() => {
+      const min = num * 0.60;
+      const max = num * 0.92;
+      document.getElementById('sim-min').textContent = 'R$ ' + formatBRL(min);
+      document.getElementById('sim-max').textContent = 'R$ ' + formatBRL(max);
+      loading.style.display = 'none';
+      resultado.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Simular agora';
+      window._simValor = 'R$ ' + formatBRL(num);
+    }, 2000);
   }
   function irParaForm() {
     if (window._simValor) {
