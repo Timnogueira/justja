@@ -665,7 +665,18 @@
     document.getElementById('login-screen').style.display = 'flex';
   }
 
-  function showApp(user) {
+  const BKO_ALLOWED = [
+    'timbere.nog@gmail.com',
+    'thomas@kinetika.tech',
+    'fermaximo2007@hotmail.com.br',
+  ];
+
+  async function showApp(user) {
+    if (!BKO_ALLOWED.includes(user.email.toLowerCase())) {
+      await db.auth.signOut();
+      document.getElementById('login-error').textContent = 'Acesso não autorizado para este e-mail.';
+      return;
+    }
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app-screen').style.display = 'block';
     document.getElementById('user-email').textContent = user.email;
