@@ -1,7 +1,8 @@
 {
   "functions": {
     "api/processo.js": {
-      "regions": ["gru1"]
+      "regions": ["gru1"],
+      "maxDuration": 30
     }
   }
 }
