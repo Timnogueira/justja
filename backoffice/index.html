@@ -779,6 +779,17 @@
 
     try {
       const res = await fetch(`/api/processo?numero=${encodeURIComponent(c.numero_processo)}`);
+      if (!res.ok) {
+        const txt = await res.text();
+        const msg = res.status === 504 ? 'Tempo esgotado (504) — as APIs do CNJ demoraram demais. Tente novamente.' : `Erro HTTP ${res.status}`;
+        document.getElementById('dossie-body').innerHTML = `<div class="dossie-erro">${msg}</div>`;
+        return;
+      }
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.includes('json')) {
+        document.getElementById('dossie-body').innerHTML = `<div class="dossie-erro">Resposta inesperada do servidor. Tente novamente.</div>`;
+        return;
+      }
       const data = await res.json();
       renderDossie(data, c);
     } catch (e) {
