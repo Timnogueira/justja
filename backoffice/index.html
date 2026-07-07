@@ -1223,6 +1223,18 @@
     if (!caso || !caso.numero_processo) return;
 
     const digits = caso.numero_processo.replace(/\D/g, '');
+
+    // Enriquece com dados do modelo V10 pelo número do processo (casos criados a partir
+    // de lead não guardam esses campos; buscamos no lead correspondente).
+    if (!caso.v10) {
+      const leadV10 = (allLeads || []).find(l => (l.numero_processo||'').replace(/\D/g,'') === digits);
+      if (leadV10) {
+        caso.v10 = { data_sentenca: leadV10.data_sentenca, prazo_q90: leadV10.prazo_q90,
+                     data_pgto_q90: leadV10.data_pgto_q90, reu_tier: leadV10.reu_tier, observacao: leadV10.observacao };
+        if (!caso.reu) caso.reu = leadV10.reu_nome_full || leadV10.reu_norm;
+        if (!caso.valor_estimado && leadV10.valor_reais) caso.valor_estimado = `R$ ${Number(leadV10.valor_reais).toLocaleString('pt-BR',{minimumFractionDigits:2})}`;
+      }
+    }
     document.getElementById('dossie-title').textContent = `Dossiê — ${caso.numero_processo}`;
     document.getElementById('dossie-body').innerHTML = '<div class="dossie-loading">⏳ Consultando DJEN e DataJud...</div>';
     document.getElementById('modal-dossie').style.display = 'flex';
