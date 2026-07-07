@@ -1374,17 +1374,24 @@
       if (v10.observacao) html += `<div style="font-size:0.78rem;color:#b45309;margin-bottom:10px">⚠ ${esc(v10.observacao)}</div>`;
     }
     if (diasSentenca != null) {
+      // Fonte única: se temos o q90 do V10, ancoramos TODOS os cenários nele
+      // (escala proporcional do formato do tier) — nunca misturar V10 com tier cru.
+      const fator = v10.prazo_q90 ? v10.prazo_q90 / tier.q90 : 1;
+      const cen = [
+        ['Otimista (q15)', Math.round(tier.mediana * 0.4 * fator)],
+        ['Central (q40)',  Math.round(tier.mediana * fator)],
+        ['Conservador (q70)', Math.round(tier.q70 * fator)],
+        ['q90 (90% confiança)', v10.prazo_q90 || tier.q90],
+      ];
+      if (v10.prazo_q90) html += `<div style="font-size:0.74rem;color:var(--muted);margin-bottom:6px">Cenários ancorados no q90 do V10 (formato da distribuição do tier ${esc(tier.tier)})</div>`;
       html += '<table style="width:100%;border-collapse:collapse;font-size:0.82rem">';
       html += '<tr style="background:#f8faff"><th style="padding:7px 10px;text-align:left;color:var(--muted);font-weight:600">Cenário</th><th style="padding:7px 10px;text-align:left;color:var(--muted);font-weight:600">Dias após sentença</th><th style="padding:7px 10px;text-align:left;color:var(--muted);font-weight:600">Data estimada</th><th style="padding:7px 10px;text-align:left;color:var(--muted);font-weight:600">Dias restantes</th></tr>';
-      [
-        ['Otimista (q15)', Math.round(tier.mediana * 0.4), Math.max(0, Math.round(tier.mediana * 0.4) - diasSentenca)],
-        ['Central (q40)',  tier.mediana, diasQ40],
-        ['Conservador (q70)', tier.q70, diasQ70],
-        ['q90 (90% confiança)', v10.prazo_q90 || tier.q90, v10.prazo_q90 ? Math.max(0, v10.prazo_q90 - diasSentenca) : diasQ90],
-      ].forEach(([label, tot, rest], i) => {
+      cen.forEach(([label, tot], i) => {
+        const rest = tot - diasSentenca; // negativo = data já passou
         const bold = i === 3 ? 'font-weight:700' : '';
-        const dataEst = rest != null ? (rest > 0 ? addDias(rest) : '<span style="color:var(--green)">Dentro do prazo</span>') : '—';
-        html += `<tr style="border-top:1px solid var(--border)"><td style="padding:7px 10px;${bold}">${label}</td><td style="padding:7px 10px;${bold}">${tot} d</td><td style="padding:7px 10px;${bold}">${dataEst}</td><td style="padding:7px 10px;${bold}">${rest != null ? Math.max(0, rest) + ' d' : '—'}</td></tr>`;
+        const dataAbs = addDias(rest);
+        const dataEst = rest >= 0 ? dataAbs : `<span style="color:var(--green)">${dataAbs} — vencida, pgto pode sair a qualquer momento</span>`;
+        html += `<tr style="border-top:1px solid var(--border)"><td style="padding:7px 10px;${bold}">${label}</td><td style="padding:7px 10px;${bold}">${tot} d</td><td style="padding:7px 10px;${bold}">${dataEst}</td><td style="padding:7px 10px;${bold}">${Math.max(0, rest)} d</td></tr>`;
       });
       html += '</table>';
     } else if (!temV10) {
