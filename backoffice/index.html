@@ -461,8 +461,8 @@
         <table>
           <thead>
             <tr>
-              <th>Cliente</th><th>Réu</th><th>Valor</th><th>Cat.</th><th>Pgto q90</th>
-              <th>Telefone</th><th>Atribuição</th><th>Status</th><th>Observação</th><th>Mensagem</th><th>Ações</th>
+              <th>Cliente · Ações</th><th>Réu</th><th>Valor</th><th>Cat.</th><th>Pgto q90</th>
+              <th>Atribuição</th><th>Status</th><th>Observação</th><th>Mensagem</th>
             </tr>
           </thead>
           <tbody id="leads-body"><tr><td colspan="11" class="empty-state"><p>Importe um Excel ou aguarde...</p></td></tr></tbody>
@@ -748,13 +748,25 @@
       const obs = l.observacao ? `<span title="${esc(l.observacao)}" style="color:var(--muted);font-size:0.75rem;cursor:help">${esc(l.observacao.substring(0,30))}${l.observacao.length>30?'…':''}</span>` : '—';
       const msg = l.mensagem ? `<span class="msg-preview" title="${esc(l.mensagem)}">${esc(l.mensagem)}</span>` : '—';
 
+      const waBtn = waLink
+        ? `<a href="${waLink}" target="_blank" class="btn-wa" onclick="marcarEnviado('${l.id}')">💬 WhatsApp</a>`
+        : `<button class="btn-wa" style="background:#128c7e" onclick="abrirWaSemTel('${l.id}')">💬 Digitar nº</button>`;
+
       return `<tr>
-        <td><div style="font-weight:600;font-size:0.83rem">${esc(l.autor_nome||'—')}</div><div style="font-size:0.72rem;color:var(--muted)">${esc(l.numero_processo||'')}</div></td>
-        <td style="max-width:160px"><div style="font-size:0.82rem">${esc(l.reu_norm||'—')}</div><div style="font-size:0.7rem;color:var(--muted)">${esc(l.reu_tier||'')}</div></td>
+        <td>
+          <div style="font-weight:600;font-size:0.83rem">${esc(l.autor_nome||'—')}</div>
+          <div style="font-size:0.7rem;color:var(--muted)">${esc(l.numero_processo||'')}</div>
+          <div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">
+            ${waBtn}
+            <button class="btn-sm" onclick="abrirDossieFromLead('${l.id}')" title="Gerar dossiê" style="padding:4px 8px">🔍</button>
+            ${l.status==='enviado' ? `<button class="btn-sm" onclick="updateLeadStatus('${l.id}','retornou')" style="background:#d1fae5">✓ Retornou</button>` : ''}
+            ${l.status==='retornou' ? `<button class="btn-sm" style="background:#fef3c7" onclick="converterEmCaso('${l.id}')">→ Caso</button>` : ''}
+          </div>
+        </td>
+        <td style="max-width:150px"><div style="font-size:0.82rem">${esc(l.reu_norm||'—')}</div><div style="font-size:0.7rem;color:var(--muted)">${esc(l.reu_tier||'')}</div></td>
         <td style="font-weight:600;white-space:nowrap">${esc(valor)}</td>
         <td><span style="font-weight:700;color:var(--navy)">${esc(l.categoria||'—')}</span></td>
         <td style="white-space:nowrap;font-size:0.8rem">${pgtoQ90}</td>
-        <td style="white-space:nowrap;font-size:0.82rem">${esc(tel)}</td>
         <td>
           <select class="atrib-badge ${atribCls}" style="border:none;padding:3px 6px;border-radius:10px;font-size:0.72rem;font-weight:700;cursor:pointer"
             onchange="updateLeadAtrib('${l.id}', this.value, this)">
@@ -765,14 +777,6 @@
         <td><span class="lead-status ${statusCls}">${l.status||'pendente'}</span></td>
         <td>${obs}</td>
         <td>${msg}</td>
-        <td>
-          <div class="lead-actions">
-            ${waLink ? `<a href="${waLink}" target="_blank" class="btn-wa" onclick="marcarEnviado('${l.id}')">WhatsApp</a>` : '<span style="color:var(--muted);font-size:0.75rem">Sem tel</span>'}
-            ${l.status==='enviado' ? `<button class="btn-sm" onclick="updateLeadStatus('${l.id}','retornou')">✓ Retornou</button>` : ''}
-            ${l.status==='retornou' ? `<button class="btn-sm" style="background:#fef3c7" onclick="converterEmCaso('${l.id}')">→ Caso</button>` : ''}
-            <button class="btn-sm" onclick="abrirDossieFromLead('${l.id}')" title="Gerar dossiê">🔍</button>
-          </div>
-        </td>
       </tr>`;
     }).join('');
   }
@@ -819,6 +823,18 @@
       renderLeads();
       alert(`${l.autor_nome} convertido em caso com sucesso!`);
     }
+  }
+
+  function abrirWaSemTel(id) {
+    const l = allLeads.find(x => x.id === id);
+    if (!l) return;
+    const num = prompt(`Número do WhatsApp de ${l.autor_nome}\n(somente dígitos, com DDD — ex: 11987654321):`);
+    if (!num) return;
+    const digits = num.replace(/\D/g,'');
+    if (digits.length < 10) return alert('Número inválido.');
+    const url = `https://wa.me/55${digits}?text=${encodeURIComponent(l.mensagem||'')}`;
+    window.open(url, '_blank');
+    marcarEnviado(id);
   }
 
   function abrirDossieFromLead(id) {
