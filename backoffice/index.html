@@ -693,6 +693,11 @@
     loadLeads();
   }
 
+  // Restaurar sessão após reload
+  db.auth.getSession().then(({ data: { session } }) => {
+    if (session?.user) showApp(session.user);
+  });
+
   // ─── TABS ────────────────────────────────────────────────────────────────────
   function switchTab(tab) {
     document.getElementById('casos-section').style.display   = tab === 'casos'    ? '' : 'none';
