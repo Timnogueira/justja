@@ -287,13 +287,13 @@
     /* PRINT */
     @page { margin: 0; } /* margem 0 → Chrome não desenha cabeçalho/rodapé automático (data, URL, nº página) */
     @media print {
-      /* Impressão da proposta: esconde o resto com display:none (zera altura → não duplica em 2ª página) */
-      body.print-proposta #app-screen, body.print-proposta #login-screen, body.print-proposta #modal-dossie { display: none !important; }
-      body.print-proposta #proposta-print { display: block !important; position: static !important; padding: 40px; background: white; }
+      /* Impressão da proposta: esconde TODOS os filhos do body e mostra só a proposta */
+      body.print-proposta > * { display: none !important; }
+      body.print-proposta > #proposta-print { display: block !important; position: static !important; padding: 40px; background: white; }
 
-      /* Impressão do dossiê: esconde de fato o resto (display:none zera a altura → sem páginas em branco) */
-      body.print-dossie #app-screen, body.print-dossie #login-screen, body.print-dossie #proposta-print { display: none !important; }
-      body.print-dossie #modal-dossie {
+      /* Impressão do dossiê: esconde TODOS os filhos do body e mostra só o modal do dossiê */
+      body.print-dossie > * { display: none !important; }
+      body.print-dossie > #modal-dossie {
         position: static !important; display: block !important;
         background: white; padding: 0; margin: 0;
         height: auto !important; max-height: none !important; overflow: visible !important;
