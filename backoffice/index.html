@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Backoffice — Just Já</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -224,6 +225,42 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .dossie-erro { background: #fff0f0; border-radius: 10px; padding: 16px; color: #dc2626; font-size: 0.88rem; margin-bottom: 16px; }
 
+    /* TABS */
+    .main-tabs { display: flex; gap: 4px; padding: 0 32px; background: white; border-bottom: 2px solid var(--border); }
+    .main-tab { padding: 14px 22px; font-size: 0.88rem; font-weight: 600; color: var(--muted); cursor: pointer; border: none; background: none; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: all .15s; }
+    .main-tab.active { color: var(--navy); border-bottom-color: var(--gold); }
+    .main-tab:hover:not(.active) { color: var(--text); }
+
+    /* DISPAROS */
+    #disparos-section { padding: 24px 32px; }
+    .upload-area { border: 2px dashed var(--border); border-radius: 14px; padding: 32px; text-align: center; cursor: pointer; margin-bottom: 20px; transition: border-color .2s; background: white; }
+    .upload-area:hover { border-color: var(--gold); }
+    .upload-area input { display: none; }
+    .disparos-filters { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+    .lead-table-wrap { background: white; border-radius: 14px; border: 1px solid var(--border); overflow: hidden; }
+    .lead-table-wrap table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+    .lead-table-wrap th { padding: 10px 12px; text-align: left; font-size: 0.72rem; font-weight: 700; color: var(--muted); letter-spacing: .05em; background: #f8faff; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    .lead-table-wrap td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .lead-table-wrap tr:last-child td { border-bottom: none; }
+    .lead-table-wrap tr:hover td { background: #f8faff; }
+    .lead-status { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 0.72rem; font-weight: 600; }
+    .ls-pendente { background: #f3f4f6; color: #6b7280; }
+    .ls-enviado { background: #dbeafe; color: #1d4ed8; }
+    .ls-retornou { background: #d1fae5; color: #065f46; }
+    .ls-convertido { background: #fef3c7; color: #92400e; }
+    .atrib-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 700; }
+    .atrib-strakos { background: #ede9fe; color: #5b21b6; }
+    .atrib-tim { background: #fce7f3; color: #9d174d; }
+    .msg-preview { max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 0.78rem; }
+    .lead-actions { display: flex; gap: 6px; }
+    .btn-wa { background: #25d366; color: white; border: none; border-radius: 8px; padding: 5px 10px; font-size: 0.78rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .btn-wa:hover { background: #1fba5a; }
+    .btn-sm { padding: 5px 10px; font-size: 0.78rem; border-radius: 8px; cursor: pointer; border: 1px solid var(--border); background: white; font-weight: 500; }
+    .btn-sm:hover { background: var(--bg); }
+    .disparos-stats { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+    .d-stat { background: white; border: 1px solid var(--border); border-radius: 10px; padding: 10px 18px; font-size: 0.82rem; color: var(--muted); }
+    .d-stat strong { color: var(--text); font-size: 1rem; display: block; }
+
     /* HISTÓRICO */
     .historico-timeline { padding: 4px 0; }
     .hist-entry {
@@ -327,6 +364,14 @@
     </div>
   </header>
 
+  <!-- TABS -->
+  <div class="main-tabs">
+    <button class="main-tab active" id="tab-casos" onclick="switchTab('casos')">📋 Casos</button>
+    <button class="main-tab" id="tab-disparos" onclick="switchTab('disparos')">🚀 Disparos</button>
+  </div>
+
+  <!-- SEÇÃO CASOS -->
+  <div id="casos-section">
   <main>
     <div class="top-bar">
       <h1>Casos</h1>
@@ -377,7 +422,56 @@
       </table>
     </div>
   </main>
-</div>
+  </div><!-- /casos-section -->
+
+  <!-- SEÇÃO DISPAROS -->
+  <div id="disparos-section" style="display:none">
+    <div style="padding:24px 32px">
+      <div class="top-bar" style="margin-bottom:16px">
+        <h1>Disparos</h1>
+        <div class="top-bar-actions">
+          <button class="btn btn-ghost" onclick="loadLeads()">↺ Atualizar</button>
+          <label class="btn btn-primary" style="cursor:pointer">
+            ⬆ Importar Excel
+            <input type="file" accept=".xlsx,.xls" style="display:none" onchange="importarExcel(this)">
+          </label>
+        </div>
+      </div>
+      <div class="disparos-stats" id="d-stats"></div>
+      <div class="disparos-filters">
+        <select id="d-filter-status" class="search-input" style="width:auto;padding:8px 12px" onchange="renderLeads()">
+          <option value="">Todos os status</option>
+          <option value="pendente">Pendente</option>
+          <option value="enviado">Enviado</option>
+          <option value="retornou">Retornou</option>
+          <option value="convertido">Convertido</option>
+        </select>
+        <select id="d-filter-atrib" class="search-input" style="width:auto;padding:8px 12px" onchange="renderLeads()">
+          <option value="">Todos</option>
+          <option value="Tim">Tim</option>
+          <option value="Strakos">Strakos</option>
+        </select>
+        <select id="d-filter-cat" class="search-input" style="width:auto;padding:8px 12px" onchange="renderLeads()">
+          <option value="">Todas categorias</option>
+          <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option>
+        </select>
+        <input type="text" id="d-search" class="search-input" placeholder="Buscar nome, réu, processo..." style="flex:1;min-width:200px" oninput="renderLeads()">
+      </div>
+      <div class="lead-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Cliente</th><th>Réu</th><th>Valor</th><th>Cat.</th><th>Pgto q90</th>
+              <th>Telefone</th><th>Atribuição</th><th>Status</th><th>Observação</th><th>Mensagem</th><th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="leads-body"><tr><td colspan="11" class="empty-state"><p>Importe um Excel ou aguarde...</p></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /disparos-section -->
+
+</div><!-- /app-screen -->
 
 <!-- MODAL: NOVO / EDITAR CASO -->
 <div class="modal-overlay" id="modal-caso" style="display:none" onclick="closeIfOverlay(event, 'modal-caso')">
@@ -576,6 +670,201 @@
     document.getElementById('app-screen').style.display = 'block';
     document.getElementById('user-email').textContent = user.email;
     loadCasos();
+    loadLeads();
+  }
+
+  // ─── TABS ────────────────────────────────────────────────────────────────────
+  function switchTab(tab) {
+    document.getElementById('casos-section').style.display   = tab === 'casos'    ? '' : 'none';
+    document.getElementById('disparos-section').style.display = tab === 'disparos' ? '' : 'none';
+    document.getElementById('tab-casos').classList.toggle('active',    tab === 'casos');
+    document.getElementById('tab-disparos').classList.toggle('active', tab === 'disparos');
+  }
+
+  // ─── DISPAROS ────────────────────────────────────────────────────────────────
+  let allLeads = [];
+
+  async function loadLeads() {
+    const { data } = await db.from('justja_leads').select('*').order('created_at', { ascending: false });
+    allLeads = data || [];
+    renderLeads();
+  }
+
+  function renderLeads() {
+    const statusF = document.getElementById('d-filter-status')?.value || '';
+    const atribF  = document.getElementById('d-filter-atrib')?.value  || '';
+    const catF    = document.getElementById('d-filter-cat')?.value    || '';
+    const q       = (document.getElementById('d-search')?.value || '').toLowerCase();
+
+    const filtered = allLeads.filter(l => {
+      if (statusF && l.status !== statusF) return false;
+      if (atribF  && l.atribuicao !== atribF) return false;
+      if (catF    && l.categoria !== catF) return false;
+      if (q && !`${l.autor_nome} ${l.reu_norm} ${l.numero_processo}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+
+    // Stats
+    const total    = allLeads.length;
+    const pendente = allLeads.filter(l => l.status === 'pendente').length;
+    const enviado  = allLeads.filter(l => l.status === 'enviado').length;
+    const retornou = allLeads.filter(l => l.status === 'retornou').length;
+    document.getElementById('d-stats').innerHTML =
+      dStat('Total', total) + dStat('Pendentes', pendente) +
+      dStat('Enviados', enviado) + dStat('Retornaram', retornou) +
+      dStat('Filtrados', filtered.length);
+
+    const tbody = document.getElementById('leads-body');
+    if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="11" class="empty-state"><p>Nenhum lead encontrado.</p></td></tr>'; return; }
+
+    tbody.innerHTML = filtered.map(l => {
+      const tel = l.ddd && l.tel ? `(${l.ddd}) ${l.tel}` : l.tel || '—';
+      const waNum = l.ddd && l.tel ? `55${l.ddd}${String(l.tel).replace(/\D/g,'')}` : '';
+      const waLink = waNum ? `https://wa.me/${waNum}?text=${encodeURIComponent(l.mensagem || '')}` : '';
+      const valor  = l.valor_reais ? 'R$ ' + Number(l.valor_reais).toLocaleString('pt-BR', {minimumFractionDigits:2}) : '—';
+      const pgtoQ90 = l.data_pgto_q90 ? new Date(l.data_pgto_q90).toLocaleDateString('pt-BR') : '—';
+      const atribCls = l.atribuicao === 'Strakos' ? 'atrib-strakos' : 'atrib-tim';
+      const statusCls = { pendente:'ls-pendente', enviado:'ls-enviado', retornou:'ls-retornou', convertido:'ls-convertido' }[l.status] || 'ls-pendente';
+      const obs = l.observacao ? `<span title="${esc(l.observacao)}" style="color:var(--muted);font-size:0.75rem;cursor:help">${esc(l.observacao.substring(0,30))}${l.observacao.length>30?'…':''}</span>` : '—';
+      const msg = l.mensagem ? `<span class="msg-preview" title="${esc(l.mensagem)}">${esc(l.mensagem)}</span>` : '—';
+
+      return `<tr>
+        <td><div style="font-weight:600;font-size:0.83rem">${esc(l.autor_nome||'—')}</div><div style="font-size:0.72rem;color:var(--muted)">${esc(l.numero_processo||'')}</div></td>
+        <td style="max-width:160px"><div style="font-size:0.82rem">${esc(l.reu_norm||'—')}</div><div style="font-size:0.7rem;color:var(--muted)">${esc(l.reu_tier||'')}</div></td>
+        <td style="font-weight:600;white-space:nowrap">${esc(valor)}</td>
+        <td><span style="font-weight:700;color:var(--navy)">${esc(l.categoria||'—')}</span></td>
+        <td style="white-space:nowrap;font-size:0.8rem">${pgtoQ90}</td>
+        <td style="white-space:nowrap;font-size:0.82rem">${esc(tel)}</td>
+        <td>
+          <select class="atrib-badge ${atribCls}" style="border:none;padding:3px 6px;border-radius:10px;font-size:0.72rem;font-weight:700;cursor:pointer"
+            onchange="updateLeadAtrib('${l.id}', this.value, this)">
+            <option ${l.atribuicao==='Tim'?'selected':''}>Tim</option>
+            <option ${l.atribuicao==='Strakos'?'selected':''}>Strakos</option>
+          </select>
+        </td>
+        <td><span class="lead-status ${statusCls}">${l.status||'pendente'}</span></td>
+        <td>${obs}</td>
+        <td>${msg}</td>
+        <td>
+          <div class="lead-actions">
+            ${waLink ? `<a href="${waLink}" target="_blank" class="btn-wa" onclick="marcarEnviado('${l.id}')">WhatsApp</a>` : '<span style="color:var(--muted);font-size:0.75rem">Sem tel</span>'}
+            ${l.status==='enviado' ? `<button class="btn-sm" onclick="updateLeadStatus('${l.id}','retornou')">✓ Retornou</button>` : ''}
+            ${l.status==='retornou' ? `<button class="btn-sm" style="background:#fef3c7" onclick="converterEmCaso('${l.id}')">→ Caso</button>` : ''}
+            <button class="btn-sm" onclick="abrirDossieFromLead('${l.id}')" title="Gerar dossiê">🔍</button>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  function dStat(label, val) {
+    return `<div class="d-stat"><strong>${val}</strong>${label}</div>`;
+  }
+
+  async function updateLeadStatus(id, status) {
+    await db.from('justja_leads').update({ status, enviado_at: status==='enviado' ? new Date().toISOString() : undefined }).eq('id', id);
+    const l = allLeads.find(x => x.id === id);
+    if (l) { l.status = status; if (status==='enviado') l.enviado_at = new Date().toISOString(); }
+    renderLeads();
+  }
+
+  async function updateLeadAtrib(id, atrib, sel) {
+    const cls = atrib === 'Strakos' ? 'atrib-strakos' : 'atrib-tim';
+    sel.className = `atrib-badge ${cls}`;
+    sel.style.cssText = '';
+    await db.from('justja_leads').update({ atribuicao: atrib }).eq('id', id);
+    const l = allLeads.find(x => x.id === id);
+    if (l) l.atribuicao = atrib;
+  }
+
+  function marcarEnviado(id) {
+    setTimeout(() => updateLeadStatus(id, 'enviado'), 1500);
+  }
+
+  async function converterEmCaso(id) {
+    const l = allLeads.find(x => x.id === id);
+    if (!l) return;
+    const tel = l.ddd && l.tel ? `(${l.ddd}) ${l.tel}` : l.tel || '';
+    const payload = {
+      nome: l.autor_nome, numero_processo: l.numero_processo,
+      telefone: tel, valor_estimado: l.valor_reais ? `R$ ${Number(l.valor_reais).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : '',
+      reu: l.reu_nome_full || l.reu_norm, cidade: l.cidade,
+      status: 'recebido', origem: 'disparo', observacao: `Importado de disparo · Tier ${l.reu_tier} · Cat. ${l.categoria}\n---\n`
+    };
+    const { error } = await db.from('justja_casos').insert([payload]);
+    if (!error) {
+      await db.from('justja_leads').update({ status: 'convertido' }).eq('id', id);
+      const lead = allLeads.find(x => x.id === id);
+      if (lead) lead.status = 'convertido';
+      renderLeads();
+      alert(`${l.autor_nome} convertido em caso com sucesso!`);
+    }
+  }
+
+  function abrirDossieFromLead(id) {
+    const l = allLeads.find(x => x.id === id);
+    if (!l || !l.numero_processo) return alert('Sem número de processo.');
+    // Injeta como caso temporário e abre o modal
+    const fake = { id: 'lead_' + id, numero_processo: l.numero_processo, nome: l.autor_nome, valor_estimado: l.valor_reais ? `R$ ${Number(l.valor_reais).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : '', reu: l.reu_nome_full || l.reu_norm };
+    if (!allCasos.find(x => x.id === fake.id)) allCasos.push(fake);
+    switchTab('casos');
+    consultarProcesso(fake.id);
+  }
+
+  async function importarExcel(input) {
+    const file = input.files[0];
+    if (!file) return;
+    input.value = '';
+    const buf = await file.arrayBuffer();
+    const wb  = XLSX.read(buf, { type: 'array', cellDates: true });
+    const ws  = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { defval: null });
+
+    if (!rows.length) return alert('Planilha vazia ou formato inválido.');
+
+    const BATCH = 50;
+    let inseridos = 0, ignorados = 0;
+
+    // Metade Tim, metade Strakos (por índice)
+    const meio = Math.ceil(rows.length / 2);
+
+    const registros = rows.map((r, i) => {
+      const ddd = r['ddd'] ? String(r['ddd']).replace(/\D/g,'') : null;
+      const tel = r['tel'] ? String(r['tel']).replace(/\D/g,'') : null;
+      const num = r['numero_processo'] ? String(r['numero_processo']).replace(/\D/g,'') : null;
+      if (!num) return null;
+      return {
+        numero_processo: num,
+        autor_nome:      r['autor_nome'] || null,
+        reu_norm:        r['reu_norm'] || null,
+        reu_nome_full:   r['reu_nome_full'] || null,
+        reu_tier:        r['reu_tier'] || null,
+        score_reu:       r['score_reu'] ?? null,
+        valor_reais:     r['valor_reais'] ?? null,
+        ddd,
+        tel,
+        cidade:          r['cidade'] || null,
+        orgao_julgador:  r['orgao_julgador_nome'] || null,
+        categoria:       r['categoria_final'] || null,
+        data_sentenca:   r['data_sentenca'] ? (r['data_sentenca'] instanceof Date ? r['data_sentenca'].toISOString().substring(0,10) : String(r['data_sentenca']).substring(0,10)) : null,
+        prazo_q90:       r['prazo_q90'] ?? null,
+        data_pgto_q90:   r['data_pgto_q90'] ? (r['data_pgto_q90'] instanceof Date ? r['data_pgto_q90'].toISOString().substring(0,10) : String(r['data_pgto_q90']).substring(0,10)) : null,
+        mensagem:        r['Mensagem'] || null,
+        versao_msg:      r['Versão msg'] ? String(r['Versão msg']) : null,
+        observacao:      r['Observação (previsibilidade)'] || null,
+        atribuicao:      i < meio ? 'Tim' : 'Strakos',
+        status:          'pendente',
+      };
+    }).filter(Boolean);
+
+    for (let i = 0; i < registros.length; i += BATCH) {
+      const { error } = await db.from('justja_leads').upsert(registros.slice(i, i + BATCH), { onConflict: 'numero_processo', ignoreDuplicates: false });
+      if (!error) inseridos += Math.min(BATCH, registros.length - i);
+      else ignorados += Math.min(BATCH, registros.length - i);
+    }
+
+    alert(`Importação concluída!\n${inseridos} registros inseridos/atualizados.\n${ignorados} com erro.`);
+    await loadLeads();
   }
 
   (async () => {
