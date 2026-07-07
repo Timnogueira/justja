@@ -285,12 +285,11 @@
     .nota-nova-area textarea:focus { outline: none; border-color: var(--navy); }
 
     /* PRINT */
-    @page { margin: 14mm; } /* remove cabeçalho/rodapé automático do navegador (data, URL, nº página) */
+    @page { margin: 0; } /* margem 0 → Chrome não desenha cabeçalho/rodapé automático (data, URL, nº página) */
     @media print {
-      /* Impressão da proposta (fluxo antigo) */
-      body:not(.print-dossie) * { visibility: hidden; }
-      body:not(.print-dossie) #proposta-print, body:not(.print-dossie) #proposta-print * { visibility: visible; }
-      body:not(.print-dossie) #proposta-print { position: fixed; inset: 0; padding: 40px; background: white; }
+      /* Impressão da proposta: esconde o resto com display:none (zera altura → não duplica em 2ª página) */
+      body.print-proposta #app-screen, body.print-proposta #login-screen, body.print-proposta #modal-dossie { display: none !important; }
+      body.print-proposta #proposta-print { display: block !important; position: static !important; padding: 40px; background: white; }
 
       /* Impressão do dossiê: esconde de fato o resto (display:none zera a altura → sem páginas em branco) */
       body.print-dossie #app-screen, body.print-dossie #login-screen, body.print-dossie #proposta-print { display: none !important; }
@@ -1616,7 +1615,6 @@
     const condicoes = document.getElementById('p-condicoes').value;
     const hoje = new Date().toLocaleDateString('pt-BR');
 
-    document.getElementById('proposta-print').style.display = 'block';
     document.getElementById('proposta-print').innerHTML = `
       <div class="print-header">
         <div class="print-logo">
@@ -1656,8 +1654,9 @@
         Cessão de crédito amparada pelo Art. 286 do Código Civil — Lei 10.406/2002.
       </div>
     `;
+    document.body.classList.add('print-proposta');
     window.print();
-    setTimeout(() => { document.getElementById('proposta-print').style.display = 'none'; }, 500);
+    document.body.classList.remove('print-proposta');
   }
 
   // ─── UTILS ───────────────────────────────────────────────────────────────────
