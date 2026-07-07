@@ -13,38 +13,40 @@ module.exports = async function handler(req, res) {
 
   const result = { datajud: null, djen: null };
 
-  // DataJud — TJSP
-  try {
-    const r = await fetch('https://api-publica.datajud.cnj.jus.br/api_publica_tjsp/_search', {
-      method: 'POST',
-      headers: {
-        'Authorization': `APIKey ${DATAJUD_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ query: { match: { numeroProcesso: digits } }, size: 1 })
-    });
-    if (r.ok) result.datajud = await r.json();
-    else result.erroDatajud = `HTTP ${r.status}`;
-  } catch (e) {
-    result.erroDatajud = e.message;
-  }
+  const timeout = (ms) => new Promise((_, rej) => setTimeout(() => rej(new Error(`timeout ${ms}ms`)), ms));
 
-  // DJEN — Comunica CNJ
-  try {
-    const r = await fetch(
-      `https://comunicaapi.pje.jus.br/api/v1/comunicacao?numeroProcesso=${digits}&pagina=1&itensPorPagina=5`,
-      {
+  // DataJud — TJSP (paralelo com DJEN, 8s timeout cada)
+  const [djRes, djenRes] = await Promise.allSettled([
+    Promise.race([
+      fetch('https://api-publica.datajud.cnj.jus.br/api_publica_tjsp/_search', {
+        method: 'POST',
+        headers: { 'Authorization': `APIKey ${DATAJUD_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: { match: { numeroProcesso: digits } }, size: 1 })
+      }),
+      timeout(8000)
+    ]),
+    Promise.race([
+      fetch(`https://comunicaapi.pje.jus.br/api/v1/comunicacao?numeroProcesso=${digits}&pagina=1&itensPorPagina=5`, {
         headers: {
           'Accept': 'application/json, text/plain, */*',
           'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
         }
-      }
-    );
-    if (r.ok) result.djen = await r.json();
-    else result.erroDjen = `HTTP ${r.status}`;
-  } catch (e) {
-    result.erroDjen = e.message;
+      }),
+      timeout(8000)
+    ])
+  ]);
+
+  if (djRes.status === 'fulfilled' && djRes.value.ok) {
+    try { result.datajud = await djRes.value.json(); } catch(e) { result.erroDatajud = 'parse error'; }
+  } else {
+    result.erroDatajud = djRes.reason?.message || `HTTP ${djRes.value?.status}`;
+  }
+
+  if (djenRes.status === 'fulfilled' && djenRes.value.ok) {
+    try { result.djen = await djenRes.value.json(); } catch(e) { result.erroDjen = 'parse error'; }
+  } else {
+    result.erroDjen = djenRes.reason?.message || `HTTP ${djenRes.value?.status}`;
   }
 
   return res.json(result);
