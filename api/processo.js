@@ -17,11 +17,19 @@ async function comRetry(fn, tentativas) {
   let ultimo;
   for (let i = 0; i < tentativas; i++) {
     try {
-      return await fn();
+      const r = await fn();
+      // 429/5xx: vale re-tentar com backoff; outros status retornam direto
+      if (!r.ok && (r.status === 429 || r.status >= 500) && i < tentativas - 1) {
+        ultimo = new Error(`HTTP ${r.status}`);
+      } else {
+        return r;
+      }
     } catch (e) {
       ultimo = e;
-      if (i < tentativas - 1) await new Promise(r => setTimeout(r, 1500));
+      if (i === tentativas - 1) throw e;
     }
+    // backoff exponencial: 2s, 4s, 8s — não marretar o rate limit
+    await new Promise(r => setTimeout(r, 2000 * Math.pow(2, i)));
   }
   throw ultimo;
 }

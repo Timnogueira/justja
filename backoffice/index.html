@@ -1197,21 +1197,24 @@
     document.getElementById('dossie-body').innerHTML = '<div class="dossie-loading">⏳ Consultando DJEN e DataJud...</div>';
     document.getElementById('modal-dossie').style.display = 'flex';
 
-    // Retry helper
+    // Retry com backoff exponencial (respeita rate limit: 2s, 4s, 8s...)
     async function fetchRetry(fn, tentativas) {
       for (let i = 0; i < tentativas; i++) {
         try { return await fn(); } catch(e) {
           if (i === tentativas - 1) throw e;
-          await new Promise(r => setTimeout(r, 1500));
+          await new Promise(r => setTimeout(r, 2000 * Math.pow(2, i)));
         }
       }
     }
 
-    // Dispara DJEN (browser, retry 5x/45s) e DataJud proxy em paralelo
+    // Dispara DJEN (browser) e DataJud proxy em paralelo
     const djenPromise = fetchRetry(() =>
       fetch(`https://comunicaapi.pje.jus.br/api/v1/comunicacao?numeroProcesso=${digits}&pagina=1&itensPorPagina=100`,
         { signal: AbortSignal.timeout(45000), headers: { 'Accept': 'application/json', 'Accept-Language': 'pt-BR,pt;q=0.9' } })
-      .then(r => r.json()), 5
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}${r.status === 429 ? ' (rate limit — aguarde)' : ''}`);
+        return r.json();
+      }), 4
     ).catch(e => ({ _erro: e.message }));
 
     const djPromise = fetch(`/api/processo?numero=${encodeURIComponent(caso.numero_processo)}&apenas=datajud`)
