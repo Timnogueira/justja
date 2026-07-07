@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/processo.js": {
+      "regions": ["gru1"]
+    }
+  }
+}
