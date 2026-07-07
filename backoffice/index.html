@@ -1213,31 +1213,49 @@
     const erroDjen = djenRaw?._erro || null;
     renderDossie({ datajud: null, djen, erroDatajud: null, erroDjen, carregandoDJ: true }, caso);
 
-    // Atualiza seção DataJud quando chegar
-    djPromise.then(data => {
-      if (!data?.datajud) return;
-      const djEl = document.getElementById('dossie-dj-section');
-      if (!djEl) return;
-      const hit = data.datajud?.hits?.hits?.[0]?._source;
-      const mov = hit?.movimentos || [];
-      if (!mov.length) { djEl.innerHTML = '<div style="color:var(--muted);font-size:0.82rem">Sem movimentações no DataJud.</div>'; return; }
-      const movOrdem = [...mov].sort((a,b) => (a.dataHora||'').localeCompare(b.dataHora||''));
-      let t = `<h3 style="font-size:0.72rem;font-weight:700;color:var(--muted);letter-spacing:.06em;margin-bottom:10px">MOVIMENTAÇÕES DATAJUD (${mov.length})</h3>`;
-      t += '<table style="width:100%;border-collapse:collapse;font-size:0.8rem">';
-      t += '<tr style="background:#f8faff"><th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;width:90px">Data</th><th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;width:60px">Cód.</th><th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600">Movimento</th></tr>';
-      movOrdem.forEach(m => {
-        const isFav = COD_FAV.has(m.codigo);
-        const bg = isFav ? 'background:#f0fdf4' : (m.codigo === COD_IMPRO ? 'background:#fee2e2' : '');
-        t += `<tr style="border-top:1px solid var(--border);${bg}"><td style="padding:6px 10px;color:var(--muted)">${fmtDataHora(m.dataHora)}</td><td style="padding:6px 10px;color:var(--muted)">${m.codigo}</td><td style="padding:6px 10px;font-weight:${isFav?'700':'400'}">${esc(m.nome||'—')}</td></tr>`;
-      });
-      t += '</table>';
-      djEl.innerHTML = t;
-      const temFav = mov.some(m => COD_FAV.has(m.codigo));
-      if (temFav) {
-        const sinaisEl = document.getElementById('dossie-sinais');
-        if (sinaisEl) sinaisEl.insertAdjacentHTML('afterbegin', '<span class="sinal-badge sinal-ok">✓ Sentença favorável (DataJud)</span>');
-      }
-    }).catch(() => {});
+    // Atualiza seção DataJud quando chegar (ou mostra erro + retry)
+    djPromise
+      .then(data => aplicarDatajud(data, caso.numero_processo))
+      .catch(() => aplicarDatajud(null, caso.numero_processo));
+  }
+
+  function aplicarDatajud(data, numeroProcesso) {
+    const djEl = document.getElementById('dossie-dj-section');
+    if (!djEl) return;
+    if (!data?.datajud) {
+      const motivo = data?.erroDatajud ? esc(data.erroDatajud) : 'sem resposta';
+      djEl.innerHTML = `<div style="display:flex;align-items:center;gap:10px;font-size:0.82rem;color:#b45309">⚠ DataJud indisponível (${motivo}). <button class="btn btn-ghost" style="padding:3px 10px;font-size:0.78rem" onclick="retryDatajud('${esc(numeroProcesso)}')">↻ Tentar de novo</button></div>`;
+      return;
+    }
+    const hit = data.datajud?.hits?.hits?.[0]?._source;
+    const mov = hit?.movimentos || [];
+    if (!mov.length) { djEl.innerHTML = '<div style="color:var(--muted);font-size:0.82rem">Sem movimentações no DataJud.</div>'; return; }
+    const movOrdem = [...mov].sort((a,b) => (a.dataHora||'').localeCompare(b.dataHora||''));
+    let t = `<h3 style="font-size:0.72rem;font-weight:700;color:var(--muted);letter-spacing:.06em;margin-bottom:10px">MOVIMENTAÇÕES DATAJUD (${mov.length})</h3>`;
+    if (hit?.classe?.nome || hit?.orgaoJulgador?.nome) t += `<div style="font-size:0.78rem;color:var(--muted);margin-bottom:8px">${esc(hit.classe?.nome||'')} · ${esc(hit.orgaoJulgador?.nome||'')} · ajuizado ${hit.dataAjuizamento ? new Date(hit.dataAjuizamento).toLocaleDateString('pt-BR') : '—'}</div>`;
+    t += '<table style="width:100%;border-collapse:collapse;font-size:0.8rem">';
+    t += '<tr style="background:#f8faff"><th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;width:90px">Data</th><th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;width:60px">Cód.</th><th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600">Movimento</th></tr>';
+    movOrdem.forEach(m => {
+      const isFav = COD_FAV.has(m.codigo);
+      const bg = isFav ? 'background:#f0fdf4' : (m.codigo === COD_IMPRO ? 'background:#fee2e2' : '');
+      t += `<tr style="border-top:1px solid var(--border);${bg}"><td style="padding:6px 10px;color:var(--muted)">${fmtDataHora(m.dataHora)}</td><td style="padding:6px 10px;color:var(--muted)">${m.codigo}</td><td style="padding:6px 10px;font-weight:${isFav?'700':'400'}">${esc(m.nome||'—')}</td></tr>`;
+    });
+    t += '</table>';
+    djEl.innerHTML = t;
+    const temFav = mov.some(m => COD_FAV.has(m.codigo));
+    if (temFav) {
+      const sinaisEl = document.getElementById('dossie-sinais');
+      if (sinaisEl) sinaisEl.insertAdjacentHTML('afterbegin', '<span class="sinal-badge sinal-ok">✓ Sentença favorável (DataJud)</span>');
+    }
+  }
+
+  function retryDatajud(numeroProcesso) {
+    const djEl = document.getElementById('dossie-dj-section');
+    if (djEl) djEl.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:var(--muted);font-size:0.82rem"><span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 1s linear infinite"></span> Buscando movimentações no DataJud...</div>';
+    fetch(`/api/processo?numero=${encodeURIComponent(numeroProcesso)}`)
+      .then(r => r.json())
+      .then(data => aplicarDatajud(data, numeroProcesso))
+      .catch(() => aplicarDatajud(null, numeroProcesso));
   }
 
   function renderDossie({ datajud, djen, erroDatajud, erroDjen, carregandoDJ }, caso) {

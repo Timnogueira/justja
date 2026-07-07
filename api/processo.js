@@ -38,8 +38,8 @@ module.exports = async function handler(req, res) {
 
   const result = { datajud: null, djen: null };
 
+  // Orçamento total < 60s (maxDuration Vercel). DataJud: 2×22s. DJEN: 1×20s (browser tem retry próprio).
   const [djRes, djenRes] = await Promise.allSettled([
-    // DataJud: timeout 35s, 2 tentativas
     comRetry(() => fetchComTimeout(
       'https://api-publica.datajud.cnj.jus.br/api_publica_tjsp/_search',
       {
@@ -50,10 +50,9 @@ module.exports = async function handler(req, res) {
         },
         body: JSON.stringify({ size: 1, query: { term: { numeroProcesso: digits } } })
       },
-      35000
+      22000
     ), 2),
 
-    // DJEN: timeout 45s, 5 tentativas (API instável)
     comRetry(() => fetchComTimeout(
       `https://comunicaapi.pje.jus.br/api/v1/comunicacao?numeroProcesso=${digits}&pagina=1&itensPorPagina=100`,
       {
@@ -63,8 +62,8 @@ module.exports = async function handler(req, res) {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
         }
       },
-      45000
-    ), 5),
+      20000
+    ), 1),
   ]);
 
   if (djRes.status === 'fulfilled' && djRes.value.ok) {
