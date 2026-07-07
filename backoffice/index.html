@@ -835,20 +835,20 @@
     const l = allLeads.find(x => x.id === id);
     if (!l) return;
     const tel = l.ddd && l.tel ? `(${l.ddd}) ${l.tel}` : l.tel || '';
+    const reu = l.reu_nome_full || l.reu_norm || '—';
     const payload = {
       nome: l.autor_nome, numero_processo: l.numero_processo,
       telefone: tel, valor_estimado: l.valor_reais ? `R$ ${Number(l.valor_reais).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : '',
-      reu: l.reu_nome_full || l.reu_norm, cidade: l.cidade,
-      status: 'recebido', origem: 'disparo', observacao: `Importado de disparo · Tier ${l.reu_tier} · Cat. ${l.categoria}\n---\n`
+      status: 'recebido', origem: 'disparo',
+      observacao: `[${new Date().toLocaleString('pt-BR')}] Importado de disparo · Réu: ${reu} · Cidade: ${l.cidade||'—'} · Tier ${l.reu_tier||'—'} · Cat. ${l.categoria||'—'}`
     };
     const { error } = await db.from('justja_casos').insert([payload]);
-    if (!error) {
-      await db.from('justja_leads').update({ status: 'convertido' }).eq('id', id);
-      const lead = allLeads.find(x => x.id === id);
-      if (lead) lead.status = 'convertido';
-      renderLeads();
-      alert(`${l.autor_nome} convertido em caso com sucesso!`);
-    }
+    if (error) { alert('Erro ao criar caso: ' + error.message); return; }
+    await db.from('justja_leads').update({ status: 'convertido' }).eq('id', id);
+    const lead = allLeads.find(x => x.id === id);
+    if (lead) lead.status = 'convertido';
+    renderLeads();
+    alert(`${l.autor_nome} convertido em caso com sucesso!`);
   }
 
   function abrirWaSemTel(id) {
@@ -1327,6 +1327,18 @@
     }
     const valorFinal = valorDJEN || caso.valor_estimado || null;
 
+    // Divergência: valor confirmado no DJEN vs. valor da nossa base
+    const parseValor = (v) => {
+      if (v == null) return null;
+      const n = parseFloat(String(v).replace(/[^\d,]/g,'').replace('.','').replace(',','.'));
+      return isNaN(n) ? null : n;
+    };
+    const valBaseNum = parseValor(caso.valor_estimado);
+    const valDjenNum = parseValor(valorDJEN);
+    // diferença > 1% (evita ruído de centavos)
+    const valorDiverge = valBaseNum != null && valDjenNum != null &&
+      Math.abs(valBaseNum - valDjenNum) / Math.max(valBaseNum, valDjenNum) > 0.01;
+
     // Réu: DJEN estruturado > cadastro > regex no texto
     let reuNome = reusDJEN[0] || caso.reu || '';
     if (!reuNome) {
@@ -1355,7 +1367,7 @@
     html += '<div style="background:#f8faff;border-radius:12px;padding:18px 20px;margin-bottom:20px;border:1px solid var(--border)">';
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">';
     html += dItem('Número CNJ', caso.numero_processo);
-    html += dItemRaw('Valor da condenação', valorFinal ? `${esc(valorFinal)}${valorDJEN ? ' <span style="font-size:0.68rem;color:var(--green)">(DJEN)</span>' : ' <span style="font-size:0.68rem;color:var(--muted)">(base)</span>'}` : '—');
+    html += dItemRaw('Valor da condenação', valorFinal ? `${esc(valorFinal)}${valorDJEN ? (valorDiverge ? ' <span style="color:#b45309;font-weight:700">⚠ difere da base</span>' : ' <span style="font-size:0.68rem;color:var(--green)">(DJEN)</span>') : ' <span style="font-size:0.68rem;color:var(--muted)">(base)</span>'}` : '—');
     html += dItemRaw('Requerente (DJEN)', autorDJEN ? `${esc(autorDJEN)}${confereAutor === true ? ' <span style="color:var(--green);font-weight:700">✓ confere</span>' : confereAutor === false ? ' <span style="color:#b45309;font-weight:700">⚠ difere da base</span>' : ''}` : esc(caso.nome || '—'));
     html += dItemRaw('Réu', reusDJEN[0] ? `${esc(reusDJEN[0])} <span style="font-size:0.68rem;color:var(--green)">(DJEN)</span>` : esc(reuNome || '—'));
     html += dItem('Órgão (DJEN)', djenItems[0]?.nomeOrgao || '—');
@@ -1364,6 +1376,7 @@
     html += '</div>';
     if (advogadosDJEN.length) html += `<div style="margin-top:10px;font-size:0.75rem;color:var(--muted)">Advogados: ${advogadosDJEN.map(esc).join(' · ')}</div>`;
     if (confereAutor === false) html += `<div style="margin-top:6px;font-size:0.78rem;color:#b45309">⚠ Nome na base: <strong>${esc(caso.nome)}</strong> — confirme antes do contato.</div>`;
+    if (valorDiverge) html += `<div style="margin-top:6px;font-size:0.78rem;color:#b45309">⚠ Valor divergente — base: <strong>${esc(caso.valor_estimado)}</strong> · sentença (DJEN): <strong>${esc(valorDJEN)}</strong>. A condenação real prevalece; revise a proposta.</div>`;
     html += '</div>';
 
     // ── SINAIS ──
