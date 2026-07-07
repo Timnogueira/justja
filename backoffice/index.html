@@ -860,7 +860,14 @@
     const l = allLeads.find(x => x.id === id);
     if (!l || !l.numero_processo) return alert('Sem número de processo.');
     // Injeta como caso temporário e abre o modal
-    const fake = { id: 'lead_' + id, numero_processo: l.numero_processo, nome: l.autor_nome, valor_estimado: l.valor_reais ? `R$ ${Number(l.valor_reais).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : '', reu: l.reu_nome_full || l.reu_norm };
+    const fake = {
+      id: 'lead_' + id, numero_processo: l.numero_processo, nome: l.autor_nome,
+      valor_estimado: l.valor_reais ? `R$ ${Number(l.valor_reais).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : '',
+      reu: l.reu_nome_full || l.reu_norm,
+      // Dados do modelo V10 (planilha planob) — fonte primária da predição
+      v10: { data_sentenca: l.data_sentenca, prazo_q90: l.prazo_q90, data_pgto_q90: l.data_pgto_q90,
+             reu_tier: l.reu_tier, observacao: l.observacao }
+    };
     if (!allCasos.find(x => x.id === fake.id)) allCasos.push(fake);
     consultarProcesso(fake.id);
   }
@@ -1160,6 +1167,10 @@
     return `<div class="dossie-item"><div class="dossie-item-label">${label}</div><div class="dossie-item-value">${esc(val) || '—'}</div></div>`;
   }
 
+  function dItemRaw(label, htmlVal) { // valor já vem escapado/formatado com HTML seguro
+    return `<div class="dossie-item"><div class="dossie-item-label">${label}</div><div class="dossie-item-value">${htmlVal || '—'}</div></div>`;
+  }
+
   let _dossieAtualId = null;
 
   function recarregarDossie() {
@@ -1235,22 +1246,44 @@
     // ── Extrações do DJEN ──
     const textoGeral = djenItems.map(i => (i.texto || '') + ' ' + (i.tipoComunicacao || '')).join(' ').toLowerCase();
 
+    // ── Partes estruturadas do DJEN (destinatarios: polo A=autor, P=réu) ──
+    const autoresDJEN = [...new Set(djenItems.flatMap(i => (i.destinatarios||[]).filter(d => d.polo === 'A').map(d => d.nome)))];
+    const reusDJEN    = [...new Set(djenItems.flatMap(i => (i.destinatarios||[]).filter(d => d.polo === 'P').map(d => d.nome)))];
+    const advogadosDJEN = [...new Set(djenItems.flatMap(i => (i.destinatarioadvogados||[]).map(a => {
+      const ad = a.advogado || a; return ad.nome ? `${ad.nome} (OAB ${ad.uf_oab||''} ${ad.numero_oab||''})` : null;
+    }).filter(Boolean)))];
+
+    // Confirmação do nome do requerente vs. nossa base
+    const nomeBase = (caso.nome || '').trim().toUpperCase();
+    const autorDJEN = autoresDJEN[0] || null;
+    let confereAutor = null; // null = sem dado pra comparar
+    if (nomeBase && autorDJEN) {
+      const a = autorDJEN.trim().toUpperCase();
+      confereAutor = a === nomeBase || a.includes(nomeBase) || nomeBase.includes(a);
+    }
+
     // Sentença: publicação com tipoComunicacao ~Sentença
     const pubSentenca = djenItems.find(i => /sentença|procedên|procedente/i.test((i.tipoComunicacao||'') + ' ' + (i.texto||'')));
     const dataSentencaDJEN = pubSentenca?.data_disponibilizacao || null; // ex: "2026-04-14"
-    const diasSentencaDJEN = dataSentencaDJEN
-      ? Math.floor((Date.now() - new Date(dataSentencaDJEN)) / 86400000)
-      : null;
 
-    // Valor: extrai R$ X.XXX,XX do texto da sentença
-    let valorDJEN = caso.valor_estimado || null;
+    // Data sentença: V10 (nossa base) tem prioridade; DJEN confirma
+    const v10 = caso.v10 || {};
+    const dataSentenca = v10.data_sentenca || dataSentencaDJEN;
+    const fonteSentenca = v10.data_sentenca ? 'base V10' : (dataSentencaDJEN ? 'DJEN' : null);
+    const diasSentenca = dataSentenca ? Math.floor((Date.now() - new Date(dataSentenca)) / 86400000) : null;
+
+    // Valor da condenação: regex no texto da sentença (prioriza contexto "conden…"), fallback base
+    let valorDJEN = null;
     if (pubSentenca?.texto) {
-      const m = (pubSentenca.texto.replace(/<[^>]*>/g,'')).match(/R\$\s*([\d.,]+(?:\s*mil)?)/i);
+      const txtLimpo = pubSentenca.texto.replace(/<[^>]*>/g,' ');
+      const mCond = txtLimpo.match(/conden[a-zçã]*[^.]{0,200}?R\$\s*([\d.]+,\d{2})/i);
+      const m = mCond || txtLimpo.match(/R\$\s*([\d.]+,\d{2})/);
       if (m) valorDJEN = 'R$ ' + m[1];
     }
+    const valorFinal = valorDJEN || caso.valor_estimado || null;
 
-    // Réu: do caso ou extraído do texto do DJEN
-    let reuNome = caso.reu || '';
+    // Réu: DJEN estruturado > cadastro > regex no texto
+    let reuNome = reusDJEN[0] || caso.reu || '';
     if (!reuNome) {
       const mReu = textoGeral.match(/r[eé]u\s*[:\-]?\s*([a-záàâãéêíóôõúç\s]+(?:s\.?a\.?|ltda\.?|banco\s+\w+)?)/i);
       if (mReu) reuNome = mReu[1].trim();
@@ -1265,12 +1298,11 @@
     if (/recurso|apel/.test(textoGeral)) sinais.push({ txt: 'Recurso', cls: 'sinal-alert' });
     if (/intima/.test(textoGeral)) sinais.push({ txt: 'Intimação', cls: 'sinal-alert' });
 
-    // Predição de prazo (usa DJEN se DataJud não veio)
-    const tier = detectarTierReu(reuNome);
-    const diasSentenca = diasSentencaDJEN;
-    const diasQ40 = tier && diasSentenca != null ? Math.max(0, tier.mediana - diasSentenca) : null;
-    const diasQ70 = tier && diasSentenca != null ? Math.max(0, tier.q70  - diasSentenca) : null;
-    const diasQ90 = tier && diasSentenca != null ? Math.max(0, tier.q90  - diasSentenca) : null;
+    // Predição de prazo — tier sempre disponível (T_outros como fallback)
+    const tier = detectarTierReu(reuNome) || { tier: 'T_outros', mediana: 180, q70: 300, q90: 420 };
+    const diasQ40 = diasSentenca != null ? Math.max(0, tier.mediana - diasSentenca) : null;
+    const diasQ70 = diasSentenca != null ? Math.max(0, tier.q70  - diasSentenca) : null;
+    const diasQ90 = diasSentenca != null ? Math.max(0, tier.q90  - diasSentenca) : null;
 
     let html = '';
 
@@ -1278,12 +1310,16 @@
     html += '<div style="background:#f8faff;border-radius:12px;padding:18px 20px;margin-bottom:20px;border:1px solid var(--border)">';
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">';
     html += dItem('Número CNJ', caso.numero_processo);
-    html += dItem('Valor confirmado', valorDJEN || '—');
-    html += dItem('Réu', reuNome || '—');
+    html += dItemRaw('Valor da condenação', valorFinal ? `${esc(valorFinal)}${valorDJEN ? ' <span style="font-size:0.68rem;color:var(--green)">(DJEN)</span>' : ' <span style="font-size:0.68rem;color:var(--muted)">(base)</span>'}` : '—');
+    html += dItemRaw('Requerente (DJEN)', autorDJEN ? `${esc(autorDJEN)}${confereAutor === true ? ' <span style="color:var(--green);font-weight:700">✓ confere</span>' : confereAutor === false ? ' <span style="color:#b45309;font-weight:700">⚠ difere da base</span>' : ''}` : esc(caso.nome || '—'));
+    html += dItemRaw('Réu', reusDJEN[0] ? `${esc(reusDJEN[0])} <span style="font-size:0.68rem;color:var(--green)">(DJEN)</span>` : esc(reuNome || '—'));
     html += dItem('Órgão (DJEN)', djenItems[0]?.nomeOrgao || '—');
-    html += dItem('Data sentença', dataSentencaDJEN ? new Date(dataSentencaDJEN).toLocaleDateString('pt-BR') : '—');
+    html += dItemRaw('Data sentença', dataSentenca ? `${new Date(dataSentenca).toLocaleDateString('pt-BR')}${fonteSentenca ? ` <span style="font-size:0.68rem;color:var(--muted)">(${fonteSentenca})</span>` : ''}` : '—');
     html += dItem('Dias desde sentença', diasSentenca != null ? diasSentenca + ' d' : '—');
-    html += '</div></div>';
+    html += '</div>';
+    if (advogadosDJEN.length) html += `<div style="margin-top:10px;font-size:0.75rem;color:var(--muted)">Advogados: ${advogadosDJEN.map(esc).join(' · ')}</div>`;
+    if (confereAutor === false) html += `<div style="margin-top:6px;font-size:0.78rem;color:#b45309">⚠ Nome na base: <strong>${esc(caso.nome)}</strong> — confirme antes do contato.</div>`;
+    html += '</div>';
 
     // ── SINAIS ──
     html += '<div id="dossie-sinais" style="margin-bottom:18px">';
@@ -1292,30 +1328,38 @@
     if (erroDjen) html += `<span class="sinal-badge sinal-danger">DJEN indisponível: ${esc(erroDjen)}</span>`;
     html += '</div>';
 
-    // ── PREDIÇÃO DE PRAZO ──
-    if (tier && diasSentenca != null) {
-      html += '<div class="dossie-section"><h3>Predição de prazo (modelo histórico por tier)</h3>';
-      html += `<div style="margin-bottom:10px;font-size:0.82rem;color:var(--muted)">Réu: <strong>${esc(reuNome||'—')}</strong> · Tier: <strong>${tier.tier}</strong> · Sentença: <strong>${dataSentencaDJEN ? new Date(dataSentencaDJEN).toLocaleDateString('pt-BR') : '—'}</strong> (${diasSentenca} dias atrás)</div>`;
+    // ── PREDIÇÃO DE PRAZO (sempre visível) ──
+    const temV10 = !!(v10.data_pgto_q90 || v10.prazo_q90);
+    html += '<div class="dossie-section"><h3>Predição de prazo de pagamento</h3>';
+    html += `<div style="margin-bottom:10px;font-size:0.82rem;color:var(--muted)">Réu: <strong>${esc(reuNome||'—')}</strong> · Tier: <strong>${esc(v10.reu_tier || tier.tier)}</strong>` +
+            (dataSentenca ? ` · Sentença: <strong>${new Date(dataSentenca).toLocaleDateString('pt-BR')}</strong> (${diasSentenca} d atrás, ${fonteSentenca})` : ' · <span style="color:#b45309">sentença não identificada</span>') +
+            ` · Fonte: <strong>${temV10 ? 'modelo V10' : 'tier histórico'}</strong></div>`;
+    if (temV10) {
+      html += '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px">';
+      if (v10.data_pgto_q90) html += `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 16px"><div style="font-size:0.68rem;color:var(--muted);font-weight:700;letter-spacing:.05em">PGTO ATÉ (Q90 · V10)</div><div style="font-size:1.15rem;font-weight:800;color:var(--green)">${new Date(v10.data_pgto_q90).toLocaleDateString('pt-BR')}</div></div>`;
+      if (v10.prazo_q90) html += `<div style="background:#f8faff;border:1px solid var(--border);border-radius:10px;padding:10px 16px"><div style="font-size:0.68rem;color:var(--muted);font-weight:700;letter-spacing:.05em">PRAZO Q90 (V10)</div><div style="font-size:1.15rem;font-weight:800">${v10.prazo_q90} d após sentença</div></div>`;
+      html += '</div>';
+      if (v10.observacao) html += `<div style="font-size:0.78rem;color:#b45309;margin-bottom:10px">⚠ ${esc(v10.observacao)}</div>`;
+    }
+    if (diasSentenca != null) {
       html += '<table style="width:100%;border-collapse:collapse;font-size:0.82rem">';
       html += '<tr style="background:#f8faff"><th style="padding:7px 10px;text-align:left;color:var(--muted);font-weight:600">Cenário</th><th style="padding:7px 10px;text-align:left;color:var(--muted);font-weight:600">Dias após sentença</th><th style="padding:7px 10px;text-align:left;color:var(--muted);font-weight:600">Data estimada</th><th style="padding:7px 10px;text-align:left;color:var(--muted);font-weight:600">Dias restantes</th></tr>';
       [
         ['Otimista (q15)', Math.round(tier.mediana * 0.4), Math.max(0, Math.round(tier.mediana * 0.4) - diasSentenca)],
         ['Central (q40)',  tier.mediana, diasQ40],
         ['Conservador (q70)', tier.q70, diasQ70],
-        ['q90 (90% confiança)', tier.q90, diasQ90],
+        ['q90 (90% confiança)', v10.prazo_q90 || tier.q90, v10.prazo_q90 ? Math.max(0, v10.prazo_q90 - diasSentenca) : diasQ90],
       ].forEach(([label, tot, rest], i) => {
         const bold = i === 3 ? 'font-weight:700' : '';
-        const dataEst = rest != null ? (rest >= 0 ? addDias(rest) : '<span style="color:var(--green)">Dentro do prazo</span>') : '—';
-        html += `<tr style="border-top:1px solid var(--border)"><td style="padding:7px 10px;${bold}">${label}</td><td style="padding:7px 10px;${bold}">${tot} d</td><td style="padding:7px 10px;${bold}">${dataEst}</td><td style="padding:7px 10px;${bold}">${rest != null && rest >= 0 ? rest + ' d' : rest < 0 ? '0 d' : '—'}</td></tr>`;
+        const dataEst = rest != null ? (rest > 0 ? addDias(rest) : '<span style="color:var(--green)">Dentro do prazo</span>') : '—';
+        html += `<tr style="border-top:1px solid var(--border)"><td style="padding:7px 10px;${bold}">${label}</td><td style="padding:7px 10px;${bold}">${tot} d</td><td style="padding:7px 10px;${bold}">${dataEst}</td><td style="padding:7px 10px;${bold}">${rest != null ? Math.max(0, rest) + ' d' : '—'}</td></tr>`;
       });
-      html += '</table></div>';
-    } else if (tier) {
-      html += '<div class="dossie-section"><h3>Predição de prazo</h3><div class="dossie-grid">';
-      html += dItem('Tier do réu', tier.tier);
-      html += dItem('Mediana histórica', tier.mediana + ' d após sentença');
-      html += dItem('q90', tier.q90 + ' d após sentença');
-      html += '</div><div style="font-size:0.78rem;color:var(--muted);margin-top:8px">Sentença não identificada no DJEN — datas estimadas indisponíveis.</div></div>';
+      html += '</table>';
+    } else if (!temV10) {
+      html += '<div class="dossie-grid">' + dItem('Mediana histórica', tier.mediana + ' d após sentença') + dItem('q70', tier.q70 + ' d') + dItem('q90', tier.q90 + ' d') + '</div>';
+      html += '<div style="font-size:0.78rem;color:var(--muted);margin-top:8px">Sem data de sentença (base ou DJEN) — datas absolutas indisponíveis; prazos relativos acima.</div>';
     }
+    html += '</div>';
 
     // ── MOVIMENTOS DATAJUD (placeholder atualizado assincronamente) ──
     html += '<div class="dossie-section"><div id="dossie-dj-section">';
