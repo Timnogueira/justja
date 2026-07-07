@@ -768,147 +768,230 @@
     syncStepper();
   }
 
-  // ─── DOSSIER ─────────────────────────────────────────────────────────────────
-  async function consultarProcesso(id) {
-    const c = allCasos.find(x => x.id === id);
-    if (!c || !c.numero_processo) return;
+  // ─── DOSSIER (chamada direta do browser — IP residencial, sem proxy) ──────────
+  const DATAJUD_KEY = 'cDZHYzlZa0JadVREZDJCendQbXY6SkJlTzNjLV9TRENyQk1RdnFKZGRQdw==';
+  const COD_FAV    = new Set([219, 221, 466, 14099, 12649, 11795]);
+  const COD_IMPRO  = 220;
+  const COD_ALVARA = 12548;
+  const COD_EXTINCAO = 196;
+  const COD_BAIXA    = 22;
 
-    document.getElementById('dossie-title').textContent = `Dossiê — ${c.numero_processo}`;
-    document.getElementById('dossie-body').innerHTML = '<div class="dossie-loading">⏳ Consultando DataJud e DJEN...</div>';
-    document.getElementById('modal-dossie').style.display = 'flex';
+  // Réus conhecidos → tier + mediana histórica (dias após sentença)
+  const REU_TIERS = {
+    santander: { tier: 'T_santander', mediana: 90,  q70: 180, q90: 270 },
+    itau:      { tier: 'T_itau',      mediana: 95,  q70: 190, q90: 280 },
+    bradesco:  { tier: 'T_bradesco',  mediana: 120, q70: 210, q90: 300 },
+    caixa:     { tier: 'T_caixa',     mediana: 150, q70: 270, q90: 380 },
+    'banco do brasil': { tier: 'T_bb', mediana: 168, q70: 240, q90: 330 },
+    nubank:    { tier: 'T_nubank',    mediana: 60,  q70: 120, q90: 200 },
+    inter:     { tier: 'T_inter',     mediana: 75,  q70: 150, q90: 220 },
+  };
 
-    try {
-      const res = await fetch(`/api/processo?numero=${encodeURIComponent(c.numero_processo)}`);
-      if (!res.ok) {
-        const txt = await res.text();
-        const msg = res.status === 504 ? 'Tempo esgotado (504) — as APIs do CNJ demoraram demais. Tente novamente.' : `Erro HTTP ${res.status}`;
-        document.getElementById('dossie-body').innerHTML = `<div class="dossie-erro">${msg}</div>`;
-        return;
-      }
-      const ct = res.headers.get('content-type') || '';
-      if (!ct.includes('json')) {
-        document.getElementById('dossie-body').innerHTML = `<div class="dossie-erro">Resposta inesperada do servidor. Tente novamente.</div>`;
-        return;
-      }
-      const data = await res.json();
-      renderDossie(data, c);
-    } catch (e) {
-      document.getElementById('dossie-body').innerHTML = `<div class="dossie-erro">Erro ao consultar: ${esc(e.message)}</div>`;
+  function detectarTierReu(nomeReu) {
+    if (!nomeReu) return null;
+    const n = nomeReu.toLowerCase();
+    for (const [key, val] of Object.entries(REU_TIERS)) {
+      if (n.includes(key)) return val;
     }
+    return { tier: 'T_outros', mediana: 180, q70: 300, q90: 420 };
   }
 
-  function renderDossie(data, caso) {
-    const { datajud, djen, erroDatajud, erroDjen } = data;
-    let html = '';
+  function addDias(dias) {
+    const d = new Date();
+    d.setDate(d.getDate() + dias);
+    return d.toLocaleDateString('pt-BR');
+  }
 
-    // ── DataJud ──
-    html += '<div class="dossie-section"><h3>DataJud (CNJ · TJSP)</h3>';
-    if (erroDatajud) {
-      html += `<div class="dossie-erro">DataJud indisponível: ${esc(erroDatajud)}</div>`;
-    } else {
-      const hit = datajud?.hits?.hits?.[0]?._source;
-      if (!hit) {
-        html += '<p style="font-size:0.85rem;color:var(--muted)">Processo não encontrado no DataJud.</p>';
-      } else {
-        const mov = hit.movimentos || [];
-        const partes = hit.partes || [];
-        const ativo = partes.filter(p => p.polo === 'ativo').map(p => p.nome).join(', ');
-        const passivo = partes.filter(p => p.polo === 'passivo').map(p => p.nome).join(', ');
+  function fmtDataHora(dh) {
+    if (!dh || dh.length < 8) return '—';
+    return `${dh.substring(6,8)}/${dh.substring(4,6)}/${dh.substring(0,4)}`;
+  }
 
-        // Classificação básica dos movimentos
-        const codigos = mov.map(m => m.codigo);
-        const COD_FAV = [219, 221, 466, 14099, 12649, 11795];
-        const COD_ALVARA = 12548;
-        const COD_IMPRO = 220;
-        const temFavoravel = codigos.some(c => COD_FAV.includes(c));
-        const temAlvara = codigos.includes(COD_ALVARA);
-        const temImpro = codigos.includes(COD_IMPRO);
-
-        html += '<div class="dossie-grid">';
-        html += dItem('Classe', hit.classe?.nome);
-        html += dItem('Órgão julgador', hit.orgaoJulgador?.nome);
-        html += dItem('Ajuizamento', fmtData(hit.dataAjuizamento));
-        html += dItem('Assunto', hit.assuntos?.[0]?.nome);
-        html += dItem('Polo ativo', ativo || '—');
-        html += dItem('Polo passivo', passivo || '—');
-        html += '</div>';
-
-        // Sinais
-        html += '<div style="margin-top:12px">';
-        if (temFavoravel) html += '<span class="sinal-badge sinal-ok">✓ Sentença favorável</span>';
-        if (temAlvara) html += '<span class="sinal-badge sinal-alert">⚠️ Alvará expedido</span>';
-        if (temImpro) html += '<span class="sinal-badge sinal-danger">✕ Improcedência (cód 220)</span>';
-        if (!temFavoravel && !temImpro && !temAlvara) html += '<span class="sinal-badge" style="background:#f3f4f6;color:var(--muted)">Sem sinal de sentença</span>';
-        html += '</div>';
-
-        // Timeline de movimentos
-        if (mov.length) {
-          html += '<div style="margin-top:14px"><div style="font-size:0.72rem;font-weight:700;color:var(--muted);margin-bottom:8px">MOVIMENTAÇÃO (últimas ' + Math.min(mov.length,10) + ')</div>';
-          html += '<div class="mov-list">';
-          [...mov].reverse().slice(0, 10).forEach(m => {
-            const dt = m.dataHora ? m.dataHora.substring(0,8) : '';
-            const dtFmt = dt ? `${dt.substring(6,8)}/${dt.substring(4,6)}/${dt.substring(0,4)}` : '';
-            html += `<div class="mov-item"><span class="mov-data">${dtFmt}</span><span class="mov-nome">${esc(m.nome)} <span style="color:var(--muted);font-size:0.7rem">#${m.codigo}</span></span></div>`;
-          });
-          html += '</div></div>';
-        }
-      }
-    }
-    html += '</div>';
-
-    // ── DJEN ──
-    html += '<div class="dossie-section"><h3>DJEN — Diário da Justiça Eletrônico</h3>';
-    if (erroDjen) {
-      html += `<div class="dossie-erro">DJEN indisponível: ${esc(erroDjen)}</div>`;
-    } else {
-      const items = djen?.items || [];
-      if (!items.length) {
-        html += '<p style="font-size:0.85rem;color:var(--muted)">Nenhuma publicação encontrada no DJEN.</p>';
-      } else {
-        // Detectar sinais por keyword
-        const sinais = new Set();
-        const textoGeral = items.map(i => (i.texto || '') + ' ' + (i.tipoComunicacao || '')).join(' ').toLowerCase();
-        if (/transit|transitado/.test(textoGeral)) sinais.add('trânsito em julgado');
-        if (/levantamento|alvará/.test(textoGeral)) sinais.add('levantamento/alvará');
-        if (/improceden/.test(textoGeral)) sinais.add('improcedência');
-        if (/intima|cita/.test(textoGeral)) sinais.add('intimação');
-        if (/recurso|apel/.test(textoGeral)) sinais.add('recurso');
-
-        if (sinais.size) {
-          html += '<div style="margin-bottom:12px">';
-          sinais.forEach(s => {
-            const cls = (s.includes('impro')) ? 'sinal-danger' : (s.includes('trânsito') || s.includes('levant')) ? 'sinal-ok' : 'sinal-alert';
-            html += `<span class="sinal-badge ${cls}">${esc(s)}</span>`;
-          });
-          html += '</div>';
-        }
-
-        html += '<div class="mov-list">';
-        items.slice(0, 5).forEach(it => {
-          html += `<div class="mov-item">
-            <span class="mov-data">${esc(it.data_disponibilizacao || '')||'—'}</span>
-            <span class="mov-nome">
-              <strong>${esc(it.tipoComunicacao || it.nomeClasse || '—')}</strong>
-              ${it.nomeOrgao ? `<span style="color:var(--muted);font-size:0.75rem"> · ${esc(it.nomeOrgao)}</span>` : ''}
-              ${it.texto ? `<div style="font-size:0.78rem;color:var(--muted);margin-top:3px;max-height:60px;overflow:hidden">${it.texto.replace(/<[^>]*>/g,'').substring(0,200)}…</div>` : ''}
-            </span>
-          </div>`;
-        });
-        html += '</div>';
-      }
-    }
-    html += '</div>';
-
-    document.getElementById('dossie-body').innerHTML = html;
+  function fmtData(iso) {
+    if (!iso) return null;
+    try { return new Date(iso).toLocaleDateString('pt-BR'); } catch { return iso; }
   }
 
   function dItem(label, val) {
     return `<div class="dossie-item"><div class="dossie-item-label">${label}</div><div class="dossie-item-value">${esc(val) || '—'}</div></div>`;
   }
 
-  function fmtData(iso) {
-    if (!iso) return null;
-    try { return new Date(iso).toLocaleDateString('pt-BR'); } catch { return iso; }
+  async function consultarProcesso(id) {
+    const caso = allCasos.find(x => x.id === id);
+    if (!caso || !caso.numero_processo) return;
+
+    const digits = caso.numero_processo.replace(/\D/g, '');
+    document.getElementById('dossie-title').textContent = `Dossiê — ${caso.numero_processo}`;
+    document.getElementById('dossie-body').innerHTML = '<div class="dossie-loading">⏳ Consultando DataJud e DJEN diretamente...</div>';
+    document.getElementById('modal-dossie').style.display = 'flex';
+
+    // Chamada direta do browser (IP residencial — sem servidor intermediário)
+    const [djRes, djenRes] = await Promise.allSettled([
+      fetch('https://api-publica.datajud.cnj.jus.br/api_publica_tjsp/_search', {
+        method: 'POST',
+        headers: { 'Authorization': `APIKey ${DATAJUD_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: { match: { numeroProcesso: digits } }, size: 1 }),
+      }).then(r => r.json()),
+      fetch(`https://comunicaapi.pje.jus.br/api/v1/comunicacao?numeroProcesso=${digits}&pagina=1&itensPorPagina=10`, {
+        headers: {
+          'Accept': 'application/json, text/plain, */*',
+          'Accept-Language': 'pt-BR,pt;q=0.9',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        },
+      }).then(r => r.json()),
+    ]);
+
+    const datajud = djRes.status === 'fulfilled' ? djRes.value : null;
+    const erroDatajud = djRes.status === 'rejected' ? djRes.reason?.message : null;
+    const djen = djenRes.status === 'fulfilled' ? djenRes.value : null;
+    const erroDjen = djenRes.status === 'rejected' ? djenRes.reason?.message : null;
+
+    renderDossie({ datajud, djen, erroDatajud, erroDjen }, caso);
+  }
+
+  function renderDossie({ datajud, djen, erroDatajud, erroDjen }, caso) {
+    const hit = datajud?.hits?.hits?.[0]?._source;
+    const djenItems = djen?.items || [];
+    const mov = hit?.movimentos || [];
+    const partes = hit?.partes || [];
+
+    // Partes
+    const autor = partes.filter(p => p.polo === 'ativo').map(p => p.nome).join(', ') || caso.nome || '—';
+    const reu   = partes.filter(p => p.polo === 'passivo').map(p => p.nome).join(', ') || '—';
+    const advs  = partes.flatMap(p => p.advogados || []).map(a => `${a.nome} (OAB ${a.numeroOAB || '?'})`).join(', ');
+
+    // Movimentos
+    const codigos = mov.map(m => m.codigo);
+    const temFav    = codigos.some(c => COD_FAV.has(c));
+    const temImpro  = codigos.includes(COD_IMPRO);
+    const temAlvara = codigos.includes(COD_ALVARA);
+    const temPago   = temAlvara || codigos.includes(COD_EXTINCAO) || codigos.includes(COD_BAIXA);
+
+    // Sentença: primeira ocorrência de código favorável
+    const movSentenca = [...mov].find(m => COD_FAV.has(m.codigo));
+    const dataSentenca = movSentenca ? fmtDataHora(movSentenca.dataHora) : null;
+    const diasSentenca = movSentenca
+      ? Math.floor((Date.now() - new Date(
+          `${movSentenca.dataHora.substring(0,4)}-${movSentenca.dataHora.substring(4,6)}-${movSentenca.dataHora.substring(6,8)}`
+        )) / 86400000)
+      : null;
+
+    // DJEN sinais
+    const textoGeral = djenItems.map(i => (i.texto || '') + ' ' + (i.tipoComunicacao || '')).join(' ').toLowerCase();
+    const sinais = [];
+    if (/transit/.test(textoGeral)) sinais.push({ txt: 'Trânsito em julgado', cls: 'sinal-ok' });
+    if (/levantamento|alvará/.test(textoGeral)) sinais.push({ txt: 'Levantamento/Alvará', cls: 'sinal-ok' });
+    if (/improceden/.test(textoGeral)) sinais.push({ txt: 'Improcedência', cls: 'sinal-danger' });
+    if (/sentença|procedên/.test(textoGeral)) sinais.push({ txt: 'Sentença', cls: 'sinal-ok' });
+    if (/recurso|apel/.test(textoGeral)) sinais.push({ txt: 'Recurso', cls: 'sinal-alert' });
+    if (/intima/.test(textoGeral)) sinais.push({ txt: 'Intimação', cls: 'sinal-alert' });
+
+    // Tier e prazo estimado
+    const tier = detectarTierReu(reu);
+    const diasRestantesQ40 = tier && diasSentenca != null ? Math.max(0, tier.mediana - diasSentenca) : null;
+    const diasRestantesQ70 = tier && diasSentenca != null ? Math.max(0, tier.q70 - diasSentenca) : null;
+    const diasRestantesQ90 = tier && diasSentenca != null ? Math.max(0, tier.q90 - diasSentenca) : null;
+
+    let html = '';
+
+    // ── CABEÇALHO ──
+    html += `<div style="background:#f8faff;border-radius:12px;padding:18px 20px;margin-bottom:20px;border:1px solid var(--border)">`;
+    html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">`;
+    html += dItem('Número CNJ', caso.numero_processo);
+    html += dItem('Valor estimado', caso.valor_estimado || '—');
+    html += dItem('Classe', hit?.classe?.nome || '—');
+    html += dItem('Assunto', hit?.assuntos?.[0]?.nome || '—');
+    html += dItem('Ajuizamento', fmtData(hit?.dataAjuizamento) || '—');
+    html += dItem('Tribunal', hit?.siglaTribunal || 'TJSP');
+    html += '</div></div>';
+
+    // ── STATUS / SINAIS ──
+    html += '<div style="margin-bottom:18px">';
+    if (temFav)    html += '<span class="sinal-badge sinal-ok">✓ Sentença favorável</span>';
+    if (temPago)   html += '<span class="sinal-badge sinal-alert">⚠️ Indício de pagamento</span>';
+    if (temImpro)  html += '<span class="sinal-badge sinal-danger">✕ Improcedência</span>';
+    if (!erroDatajud && !hit) html += '<span class="sinal-badge" style="background:#f3f4f6;color:var(--muted)">Processo não encontrado no DataJud</span>';
+    if (erroDatajud) html += `<span class="sinal-badge sinal-danger">DataJud: ${esc(erroDatajud)}</span>`;
+    sinais.forEach(s => html += `<span class="sinal-badge ${s.cls}">${s.txt}</span>`);
+    if (!sinais.length && !erroDjen) html += '<span class="sinal-badge" style="background:#f3f4f6;color:var(--muted)">Sem sinais no DJEN</span>';
+    if (erroDjen) html += `<span class="sinal-badge sinal-danger">DJEN: ${esc(erroDjen)}</span>`;
+    html += '</div>';
+
+    // ── PARTES ──
+    if (hit) {
+      html += '<div class="dossie-section"><h3>Partes</h3>';
+      html += '<div class="dossie-grid">';
+      html += dItem('Autor (polo ativo)', autor);
+      html += dItem('Réu (polo passivo)', reu);
+      if (advs) html += `<div class="dossie-item" style="grid-column:1/-1"><div class="dossie-item-label">Advogados</div><div class="dossie-item-value" style="font-size:0.82rem">${esc(advs)}</div></div>`;
+      html += dItem('Órgão julgador', hit.orgaoJulgador?.nome || '—');
+      html += '</div></div>';
+    }
+
+    // ── PREDIÇÃO DE PRAZO ──
+    if (tier && dataSentenca) {
+      html += '<div class="dossie-section"><h3>Predição de prazo estimado</h3>';
+      html += `<div style="margin-bottom:10px;font-size:0.82rem;color:var(--muted)">Réu: <strong>${esc(reu)}</strong> · Tier: <strong>${tier.tier}</strong> · Sentença: <strong>${dataSentenca}</strong> (${diasSentenca} dias atrás)</div>`;
+      html += '<table style="width:100%;border-collapse:collapse;font-size:0.82rem">';
+      html += '<tr style="background:#f8faff"><th style="padding:7px 10px;text-align:left;color:var(--muted);font-weight:600">Cenário</th><th style="padding:7px 10px;text-align:left;color:var(--muted);font-weight:600">Dias após sentença</th><th style="padding:7px 10px;text-align:left;color:var(--muted);font-weight:600">Data estimada</th><th style="padding:7px 10px;text-align:left;color:var(--muted);font-weight:600">Dias restantes</th></tr>';
+      const rows = [
+        ['Otimista (q15)', Math.round(tier.mediana * 0.4), Math.max(0, Math.round(tier.mediana * 0.4) - diasSentenca)],
+        ['Central (q40)',  tier.mediana, diasRestantesQ40],
+        ['Conservador (q70)', tier.q70, diasRestantesQ70],
+        ['q90 (90% confiança)', tier.q90, diasRestantesQ90],
+      ];
+      rows.forEach(([label, diasTot, diasRest], i) => {
+        const bold = i === 3 ? 'font-weight:700' : '';
+        const dataEst = diasRest != null && diasRest >= 0 ? addDias(diasRest) : (diasRest < 0 ? 'Prazo já passou' : '—');
+        html += `<tr style="border-top:1px solid var(--border)"><td style="padding:7px 10px;${bold}">${label}</td><td style="padding:7px 10px;${bold}">${diasTot} d</td><td style="padding:7px 10px;${bold}">${dataEst}</td><td style="padding:7px 10px;${bold}">${diasRest != null && diasRest >= 0 ? diasRest + ' d' : '—'}</td></tr>`;
+      });
+      html += '</table></div>';
+    } else if (tier && !dataSentenca && temFav) {
+      html += '<div class="dossie-section"><h3>Predição de prazo estimado</h3>';
+      html += `<div class="dossie-grid">`;
+      html += dItem('Tier do réu', tier.tier);
+      html += dItem('Mediana histórica', tier.mediana + ' dias após sentença');
+      html += dItem('q90 (conservador)', tier.q90 + ' dias após sentença');
+      html += '</div></div>';
+    }
+
+    // ── MOVIMENTOS DATAJUD ──
+    if (mov.length) {
+      const movOrdem = [...mov].sort((a,b) => (a.dataHora||'').localeCompare(b.dataHora||''));
+      html += `<div class="dossie-section"><h3>Movimentações DataJud (${mov.length} total)</h3>`;
+      html += '<table style="width:100%;border-collapse:collapse;font-size:0.8rem">';
+      html += '<tr style="background:#f8faff"><th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;width:90px">Data</th><th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;width:60px">Cód.</th><th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600">Movimento</th></tr>';
+      movOrdem.forEach(m => {
+        const isFav = COD_FAV.has(m.codigo);
+        const bg = isFav ? 'background:#f0fdf4' : (m.codigo === COD_IMPRO ? 'background:#fee2e2' : '');
+        html += `<tr style="border-top:1px solid var(--border);${bg}"><td style="padding:6px 10px;color:var(--muted)">${fmtDataHora(m.dataHora)}</td><td style="padding:6px 10px;color:var(--muted)">${m.codigo}</td><td style="padding:6px 10px;font-weight:${isFav?'700':'400'}">${esc(m.nome||'—')}</td></tr>`;
+      });
+      html += '</table></div>';
+    } else if (erroDatajud) {
+      html += `<div class="dossie-section"><h3>Movimentações DataJud</h3><div class="dossie-erro">Indisponível: ${esc(erroDatajud)}</div></div>`;
+    }
+
+    // ── COMUNICAÇÕES DJEN ──
+    if (djenItems.length) {
+      const djenOrdem = [...djenItems].sort((a,b) => (a.data_disponibilizacao||'').localeCompare(b.data_disponibilizacao||''));
+      html += `<div class="dossie-section"><h3>Comunicações DJEN (${djen?.count || djenItems.length} total)</h3>`;
+      djenOrdem.forEach(it => {
+        const textoLimpo = (it.texto || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+        const cls = /sentença|procedência|procedente|improcedente/i.test(textoLimpo) ? 'background:#f0fdf4;border-left:3px solid var(--green)'
+                  : /recurso|apelação|remessa/i.test(textoLimpo) ? 'background:#fff9ec;border-left:3px solid var(--yellow)'
+                  : 'background:#f8faff;border-left:3px solid var(--border)';
+        html += `<div style="${cls};border-radius:0 8px 8px 0;padding:12px 14px;margin-bottom:10px">`;
+        html += `<div style="font-size:0.72rem;color:var(--muted);margin-bottom:4px"><strong>${esc(it.data_disponibilizacao||'—')}</strong> · ${esc(it.tipoComunicacao||'—')} · ${esc(it.nomeOrgao||'—')}</div>`;
+        if (textoLimpo) html += `<div style="font-size:0.82rem;line-height:1.6;color:var(--text)">${esc(textoLimpo)}</div>`;
+        html += '</div>';
+      });
+      html += '</div>';
+    } else if (erroDjen) {
+      html += `<div class="dossie-section"><h3>Comunicações DJEN</h3><div class="dossie-erro">Indisponível: ${esc(erroDjen)}</div></div>`;
+    }
+
+    html += `<div style="font-size:0.72rem;color:var(--muted);margin-top:12px;text-align:right">Gerado pela Just Já · ${new Date().toLocaleString('pt-BR')}</div>`;
+    document.getElementById('dossie-body').innerHTML = html;
   }
 
   // ─── HISTÓRICO ───────────────────────────────────────────────────────────────
