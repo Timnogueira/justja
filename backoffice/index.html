@@ -555,7 +555,10 @@
 <!-- MODAL: DOSSIER DO PROCESSO -->
 <div class="modal-overlay" id="modal-dossie" style="display:none" onclick="closeIfOverlay(event, 'modal-dossie')">
   <div class="modal modal-wide" onclick="event.stopPropagation()">
-    <h2 id="dossie-title">Dossiê do processo</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:4px">
+      <h2 id="dossie-title" style="margin:0">Dossiê do processo</h2>
+      <button class="btn btn-ghost" id="dossie-refresh-btn" onclick="recarregarDossie()" title="Recarregar" style="font-size:1rem;padding:4px 10px">↺ Atualizar</button>
+    </div>
     <div id="dossie-body">
       <div class="dossie-loading">Consultando DataJud e DJEN...</div>
     </div>
@@ -1148,56 +1151,62 @@
     return `<div class="dossie-item"><div class="dossie-item-label">${label}</div><div class="dossie-item-value">${esc(val) || '—'}</div></div>`;
   }
 
+  let _dossieAtualId = null;
+
+  function recarregarDossie() {
+    if (_dossieAtualId) consultarProcesso(_dossieAtualId);
+  }
+
   async function consultarProcesso(id) {
+    _dossieAtualId = id;
     const caso = allCasos.find(x => x.id === id);
     if (!caso || !caso.numero_processo) return;
 
     const digits = caso.numero_processo.replace(/\D/g, '');
     document.getElementById('dossie-title').textContent = `Dossiê — ${caso.numero_processo}`;
-    document.getElementById('dossie-body').innerHTML = '<div class="dossie-loading">⏳ Consultando DJEN...</div>';
+    document.getElementById('dossie-body').innerHTML = '<div class="dossie-loading">⏳ Consultando DJEN e DataJud...</div>';
     document.getElementById('modal-dossie').style.display = 'flex';
 
-    // Fase 1: DJEN direto do browser (~2s) — renderiza imediatamente
-    let djen = null, erroDjen = null;
-    try {
-      const r = await fetch(`https://comunicaapi.pje.jus.br/api/v1/comunicacao?numeroProcesso=${digits}&pagina=1&itensPorPagina=10`, {
-        headers: { 'Accept': 'application/json, text/plain, */*', 'Accept-Language': 'pt-BR,pt;q=0.9' },
-      });
-      djen = await r.json();
-    } catch(e) { erroDjen = e.message; }
+    // Dispara DJEN e DataJud em paralelo
+    const djenPromise = fetch(
+      `https://comunicaapi.pje.jus.br/api/v1/comunicacao?numeroProcesso=${digits}&pagina=1&itensPorPagina=10`,
+      { headers: { 'Accept': 'application/json, text/plain, */*', 'Accept-Language': 'pt-BR,pt;q=0.9' } }
+    ).then(r => r.json()).catch(e => ({ _erro: e.message }));
 
+    const djPromise = fetch(`/api/processo?numero=${encodeURIComponent(caso.numero_processo)}`)
+      .then(r => r.ok ? r.json() : null).catch(() => null);
+
+    // Renderiza com DJEN assim que chegar (sem esperar DataJud)
+    const djenRaw = await djenPromise;
+    const djen = djenRaw?._erro ? null : djenRaw;
+    const erroDjen = djenRaw?._erro || null;
     renderDossie({ datajud: null, djen, erroDatajud: null, erroDjen, carregandoDJ: true }, caso);
 
-    // Fase 2: DataJud via proxy Vercel (background — sem bloquear UI)
-    fetch(`/api/processo?numero=${encodeURIComponent(caso.numero_processo)}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (!data || !data.datajud) return;
-        // Atualiza só a seção de movimentos sem re-renderizar tudo
-        const djEl = document.getElementById('dossie-dj-section');
-        if (!djEl) return;
-        const hit = data.datajud?.hits?.hits?.[0]?._source;
-        const mov = hit?.movimentos || [];
-        if (!mov.length) { djEl.innerHTML = '<div style="color:var(--muted);font-size:0.82rem">Sem movimentações encontradas no DataJud.</div>'; return; }
-        const movOrdem = [...mov].sort((a,b) => (a.dataHora||'').localeCompare(b.dataHora||''));
-        let t = `<h3 style="font-size:0.72rem;font-weight:700;color:var(--muted);letter-spacing:.06em;margin-bottom:10px">MOVIMENTAÇÕES DATAJUD (${mov.length} total)</h3>`;
-        t += '<table style="width:100%;border-collapse:collapse;font-size:0.8rem">';
-        t += '<tr style="background:#f8faff"><th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;width:90px">Data</th><th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;width:60px">Cód.</th><th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600">Movimento</th></tr>';
-        movOrdem.forEach(m => {
-          const isFav = COD_FAV.has(m.codigo);
-          const bg = isFav ? 'background:#f0fdf4' : (m.codigo === COD_IMPRO ? 'background:#fee2e2' : '');
-          t += `<tr style="border-top:1px solid var(--border);${bg}"><td style="padding:6px 10px;color:var(--muted)">${fmtDataHora(m.dataHora)}</td><td style="padding:6px 10px;color:var(--muted)">${m.codigo}</td><td style="padding:6px 10px;font-weight:${isFav?'700':'400'}">${esc(m.nome||'—')}</td></tr>`;
-        });
-        t += '</table>';
-        djEl.innerHTML = t;
-        // Adiciona badge de sentença favorável se veio do DataJud
-        const temFav = mov.some(m => COD_FAV.has(m.codigo));
-        if (temFav) {
-          const sinaisEl = document.getElementById('dossie-sinais');
-          if (sinaisEl) sinaisEl.insertAdjacentHTML('afterbegin', '<span class="sinal-badge sinal-ok">✓ Sentença favorável (DataJud)</span>');
-        }
-      })
-      .catch(() => {}); // falha silenciosa — DJEN já está visível
+    // Atualiza seção DataJud quando chegar
+    djPromise.then(data => {
+      if (!data?.datajud) return;
+      const djEl = document.getElementById('dossie-dj-section');
+      if (!djEl) return;
+      const hit = data.datajud?.hits?.hits?.[0]?._source;
+      const mov = hit?.movimentos || [];
+      if (!mov.length) { djEl.innerHTML = '<div style="color:var(--muted);font-size:0.82rem">Sem movimentações no DataJud.</div>'; return; }
+      const movOrdem = [...mov].sort((a,b) => (a.dataHora||'').localeCompare(b.dataHora||''));
+      let t = `<h3 style="font-size:0.72rem;font-weight:700;color:var(--muted);letter-spacing:.06em;margin-bottom:10px">MOVIMENTAÇÕES DATAJUD (${mov.length})</h3>`;
+      t += '<table style="width:100%;border-collapse:collapse;font-size:0.8rem">';
+      t += '<tr style="background:#f8faff"><th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;width:90px">Data</th><th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;width:60px">Cód.</th><th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600">Movimento</th></tr>';
+      movOrdem.forEach(m => {
+        const isFav = COD_FAV.has(m.codigo);
+        const bg = isFav ? 'background:#f0fdf4' : (m.codigo === COD_IMPRO ? 'background:#fee2e2' : '');
+        t += `<tr style="border-top:1px solid var(--border);${bg}"><td style="padding:6px 10px;color:var(--muted)">${fmtDataHora(m.dataHora)}</td><td style="padding:6px 10px;color:var(--muted)">${m.codigo}</td><td style="padding:6px 10px;font-weight:${isFav?'700':'400'}">${esc(m.nome||'—')}</td></tr>`;
+      });
+      t += '</table>';
+      djEl.innerHTML = t;
+      const temFav = mov.some(m => COD_FAV.has(m.codigo));
+      if (temFav) {
+        const sinaisEl = document.getElementById('dossie-sinais');
+        if (sinaisEl) sinaisEl.insertAdjacentHTML('afterbegin', '<span class="sinal-badge sinal-ok">✓ Sentença favorável (DataJud)</span>');
+      }
+    }).catch(() => {});
   }
 
   function renderDossie({ datajud, djen, erroDatajud, erroDjen, carregandoDJ }, caso) {
