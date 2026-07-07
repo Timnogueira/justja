@@ -862,7 +862,6 @@
     // Injeta como caso temporário e abre o modal
     const fake = { id: 'lead_' + id, numero_processo: l.numero_processo, nome: l.autor_nome, valor_estimado: l.valor_reais ? `R$ ${Number(l.valor_reais).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : '', reu: l.reu_nome_full || l.reu_norm };
     if (!allCasos.find(x => x.id === fake.id)) allCasos.push(fake);
-    switchTab('casos');
     consultarProcesso(fake.id);
   }
 
