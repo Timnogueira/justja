@@ -36,7 +36,7 @@ module.exports = async function handler(req, res) {
         },
         body: JSON.stringify({ query: { match: { numeroProcesso: digits } }, size: 1 })
       },
-      9000
+      7000
     ),
     fetchComTimeout(
       `https://comunicaapi.pje.jus.br/api/v1/comunicacao?numeroProcesso=${digits}&pagina=1&itensPorPagina=5`,
@@ -47,7 +47,7 @@ module.exports = async function handler(req, res) {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
         }
       },
-      9000
+      7000
     )
   ]);
 
