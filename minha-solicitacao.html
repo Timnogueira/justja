@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Minha Solicitação — Just Já</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --navy: #1E2D4E; --gold: #E9A827;
+      --bg: #f0f4ff; --text: #1a2744; --muted: #5a6a8a;
+      --card: #ffffff; --border: #dde3f0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg); color: var(--text);
+      min-height: 100vh; display: flex; flex-direction: column;
+    }
+    nav {
+      background: white; border-bottom: 1px solid var(--border);
+      padding: 0 24px; height: 60px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: 8px;
+      font-weight: 700; font-size: 1.1rem; color: var(--navy);
+      text-decoration: none;
+    }
+    .nav-logo svg { width: 24px; height: 24px; }
+
+    main {
+      flex: 1; display: flex; align-items: flex-start;
+      justify-content: center; padding: 40px 24px;
+    }
+    .card {
+      background: white; border-radius: 20px;
+      border: 1px solid var(--border);
+      padding: 40px; max-width: 520px; width: 100%;
+      box-shadow: 0 4px 24px rgba(0,0,0,.06);
+    }
+    .card-header { margin-bottom: 32px; }
+    .card-header p { color: var(--muted); font-size: 0.88rem; margin-top: 4px; }
+
+    .status-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 14px; border-radius: 99px;
+      font-size: 0.82rem; font-weight: 700; letter-spacing: .02em;
+    }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+    .status-recebido    { background: #EFF6FF; color: #1d4ed8; }
+    .status-recebido .status-dot { background: #3b82f6; }
+    .status-analise     { background: #FFF9EC; color: #92400e; }
+    .status-analise .status-dot { background: #f59e0b; }
+    .status-proposta    { background: #F0FDF4; color: #166534; }
+    .status-proposta .status-dot { background: #22c55e; }
+    .status-aguardando  { background: #FFF9EC; color: #92400e; }
+    .status-aguardando .status-dot { background: #f59e0b; }
+    .status-concluido   { background: #ECFDF5; color: #065f46; }
+    .status-concluido .status-dot { background: #10b981; }
+
+    .info-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 14px 0; border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+    .info-row:last-of-type { border-bottom: none; }
+    .info-label { color: var(--muted); }
+    .info-value { font-weight: 600; color: var(--navy); text-align: right; max-width: 60%; }
+
+    .timeline { margin: 28px 0; display: flex; flex-direction: column; gap: 0; }
+    .tl-item { display: flex; gap: 16px; }
+    .tl-left { display: flex; flex-direction: column; align-items: center; }
+    .tl-dot {
+      width: 14px; height: 14px; border-radius: 50%;
+      border: 2px solid var(--border); background: white;
+      flex-shrink: 0; margin-top: 3px;
+    }
+    .tl-dot.done { background: #22c55e; border-color: #22c55e; }
+    .tl-dot.active { background: var(--navy); border-color: var(--navy); }
+    .tl-line { width: 2px; background: var(--border); flex: 1; min-height: 28px; }
+    .tl-line.done { background: #22c55e; }
+    .tl-content { padding-bottom: 24px; }
+    .tl-title { font-size: 0.88rem; font-weight: 600; color: var(--navy); }
+    .tl-title.muted { color: var(--muted); font-weight: 400; }
+    .tl-sub { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+
+    .wa-btn {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      width: 100%; padding: 16px;
+      background: #25d366; color: white;
+      border: none; border-radius: 14px;
+      font-weight: 700; font-size: 1rem; cursor: pointer;
+      text-decoration: none; margin-top: 8px;
+      transition: background .2s;
+    }
+    .wa-btn:hover { background: #1ebe5d; }
+    .wa-btn svg { width: 22px; height: 22px; }
+
+    .next-step-box {
+      background: var(--bg); border-radius: 12px;
+      padding: 16px 18px; margin: 24px 0;
+      border-left: 4px solid var(--navy);
+      font-size: 0.88rem;
+    }
+    .next-step-box strong { color: var(--navy); display: block; margin-bottom: 4px; }
+    .next-step-box span { color: var(--muted); }
+
+    #loading, #error-state { text-align: center; padding: 60px 0; }
+    #loading p { color: var(--muted); margin-top: 16px; font-size: 0.9rem; }
+    .spinner {
+      width: 40px; height: 40px; border: 3px solid var(--border);
+      border-top-color: var(--navy); border-radius: 50%;
+      animation: spin .8s linear infinite; margin: 0 auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #error-state h3 { color: var(--navy); margin-bottom: 8px; }
+    #error-state p { color: var(--muted); font-size: 0.9rem; }
+
+    footer {
+      text-align: center; padding: 24px;
+      font-size: 0.8rem; color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="nav-logo">
+    <svg viewBox="0 0 28 28" fill="none">
+      <path d="M14 2L4 7v8c0 5.55 4.27 10.74 10 12 5.73-1.26 10-6.45 10-12V7L14 2z" fill="#1E2D4E"/>
+      <path d="M11 14l2 2 4-4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    Just Já
+  </a>
+  <span style="font-size:0.82rem; color:var(--muted)">Minha solicitação</span>
+</nav>
+
+<main>
+  <div class="card">
+
+    <div id="loading">
+      <div class="spinner"></div>
+      <p>Carregando sua solicitação...</p>
+    </div>
+
+    <div id="error-state" style="display:none">
+      <div style="font-size:2.5rem; margin-bottom:16px">🔍</div>
+      <h3>Solicitação não encontrada</h3>
+      <p>Verifique o link que você recebeu ou entre em contato pelo WhatsApp.</p>
+      <a href="https://wa.me/5511949454534" target="_blank" class="wa-btn" style="margin-top:24px; max-width:280px; margin-left:auto; margin-right:auto">
+        <svg fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+        Falar com especialista
+      </a>
+    </div>
+
+    <div id="caso-content" style="display:none">
+      <div class="card-header">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <h2 style="font-size:1.2rem; color:var(--navy)">Sua solicitação</h2>
+          <span id="status-badge" class="status-badge"></span>
+        </div>
+        <p id="caso-subtitulo"></p>
+      </div>
+
+      <div class="info-row">
+        <span class="info-label">Nome</span>
+        <span class="info-value" id="info-nome">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Processo</span>
+        <span class="info-value" id="info-processo">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Tipo</span>
+        <span class="info-value" id="info-tipo">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Data de entrada</span>
+        <span class="info-value" id="info-data">—</span>
+      </div>
+
+      <div class="next-step-box">
+        <strong id="next-title">Próximo passo</strong>
+        <span id="next-text"></span>
+      </div>
+
+      <div class="timeline" id="timeline"></div>
+
+      <a href="https://wa.me/5511949454534" target="_blank" class="wa-btn">
+        <svg fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+        Falar com especialista · (11) 94945-4534
+      </a>
+    </div>
+
+  </div>
+</main>
+
+<footer>Just Já · Antecipação de créditos cíveis · <a href="index.html" style="color:var(--muted)">Página inicial</a></footer>
+
+<script>
+  const SUPABASE_URL = 'https://tdmfaifablgzdoymnvwb.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_bValT2px0kI91mxAd3P-xg_vrFboPXR';
+  const { createClient } = supabase;
+  const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const STATUS_CONFIG = {
+    recebido:   { label: 'Recebido', cls: 'status-recebido', next: 'Nossa equipe está revisando sua solicitação. Entraremos em contato em até 24 horas.' },
+    em_analise: { label: 'Em análise', cls: 'status-analise', next: 'Estamos consultando os dados do seu processo no DJEN e DataJud. Em breve temos novidades.' },
+    proposta_enviada: { label: 'Proposta enviada', cls: 'status-proposta', next: 'Você deve ter recebido nossa proposta por WhatsApp. Dúvidas? Fale conosco.' },
+    aguardando_aceite: { label: 'Aguardando aceite', cls: 'status-aguardando', next: 'Aguardamos sua confirmação para dar andamento à cessão e ao pagamento.' },
+    concluido: { label: 'Concluído', cls: 'status-concluido', next: 'Operação encerrada. Obrigado por confiar na Just Já!' },
+  };
+
+  const STEPS = [
+    { key: 'recebido', label: 'Solicitação recebida', sub: 'Cadastro registrado com sucesso' },
+    { key: 'em_analise', label: 'Análise do processo', sub: 'Verificação no DJEN e DataJud' },
+    { key: 'proposta_enviada', label: 'Proposta enviada', sub: 'Condições enviadas por WhatsApp' },
+    { key: 'aguardando_aceite', label: 'Aguardando aceite', sub: 'Confirmação do cliente' },
+    { key: 'concluido', label: 'Concluído', sub: 'PIX enviado' },
+  ];
+
+  const ORDER = ['recebido','em_analise','proposta_enviada','aguardando_aceite','concluido'];
+
+  function renderTimeline(currentStatus) {
+    const idx = ORDER.indexOf(currentStatus);
+    const el = document.getElementById('timeline');
+    el.innerHTML = STEPS.map((s, i) => {
+      const done = i < idx;
+      const active = i === idx;
+      const isLast = i === STEPS.length - 1;
+      return `
+        <div class="tl-item">
+          <div class="tl-left">
+            <div class="tl-dot ${done ? 'done' : active ? 'active' : ''}"></div>
+            ${!isLast ? `<div class="tl-line ${done ? 'done' : ''}"></div>` : ''}
+          </div>
+          <div class="tl-content">
+            <div class="tl-title ${!done && !active ? 'muted' : ''}">${s.label}</div>
+            <div class="tl-sub">${s.sub}</div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  async function load() {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('id');
+
+    if (!id) {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('error-state').style.display = 'block';
+      return;
+    }
+
+    const { data, error } = await db
+      .from('justja_casos')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    document.getElementById('loading').style.display = 'none';
+
+    if (error || !data) {
+      document.getElementById('error-state').style.display = 'block';
+      return;
+    }
+
+    const cfg = STATUS_CONFIG[data.status] || STATUS_CONFIG['recebido'];
+
+    document.getElementById('status-badge').className = `status-badge ${cfg.cls}`;
+    document.getElementById('status-badge').innerHTML = `<span class="status-dot"></span>${cfg.label}`;
+    document.getElementById('caso-subtitulo').textContent = `Protocolo #${String(data.id).slice(0,8).toUpperCase()}`;
+    document.getElementById('info-nome').textContent = data.nome || '—';
+    document.getElementById('info-processo').textContent = data.numero_processo || 'Não informado';
+    document.getElementById('info-tipo').textContent = data.tipo_processo || 'Não informado';
+    document.getElementById('info-data').textContent = new Date(data.created_at).toLocaleDateString('pt-BR');
+    document.getElementById('next-text').textContent = data.observacao || cfg.next;
+
+    renderTimeline(data.status);
+    document.getElementById('caso-content').style.display = 'block';
+  }
+
+  load();
+</script>
+</body>
+</html>

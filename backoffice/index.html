@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Backoffice — Just Já</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --navy: #1E2D4E; --navy-light: #2a3f6b; --gold: #E9A827;
+      --bg: #f4f6fb; --text: #1a2744; --muted: #5a6a8a;
+      --card: #ffffff; --border: #dde3f0;
+      --green: #22c55e; --yellow: #f59e0b; --blue: #3b82f6; --gray: #94a3b8;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* LOGIN */
+    #login-screen {
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(160deg, #1E2D4E 0%, #2a3f6b 100%);
+    }
+    .login-card {
+      background: white; border-radius: 20px; padding: 48px 40px;
+      max-width: 380px; width: 100%; text-align: center;
+      box-shadow: 0 20px 60px rgba(0,0,0,.25);
+    }
+    .login-logo { font-size: 1.4rem; font-weight: 800; color: var(--navy); margin-bottom: 6px; display: flex; align-items: center; gap: 8px; justify-content: center; }
+    .login-logo svg { width: 28px; }
+    .login-sub { color: var(--muted); font-size: 0.85rem; margin-bottom: 32px; }
+    .login-card label { display: block; text-align: left; font-size: 0.82rem; font-weight: 600; color: var(--navy); margin-bottom: 6px; }
+    .login-card input {
+      width: 100%; padding: 12px 14px; border: 1.5px solid var(--border);
+      border-radius: 10px; font-size: 0.95rem; margin-bottom: 16px;
+      font-family: inherit; color: var(--text);
+    }
+    .login-card input:focus { outline: none; border-color: var(--navy); }
+    .login-btn {
+      width: 100%; padding: 13px; background: var(--navy); color: white;
+      border: none; border-radius: 12px; font-weight: 700; font-size: 0.95rem;
+      cursor: pointer; transition: background .2s;
+    }
+    .login-btn:hover { background: var(--navy-light); }
+    .login-btn:disabled { opacity: .6; cursor: not-allowed; }
+    .login-error { color: #dc2626; font-size: 0.82rem; margin-top: 8px; }
+
+    /* APP */
+    #app-screen { display: none; }
+    header {
+      background: var(--navy); color: white;
+      padding: 0 24px; height: 58px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .header-logo { font-weight: 800; font-size: 1rem; display: flex; align-items: center; gap: 8px; }
+    .header-logo svg { width: 22px; }
+    .header-right { display: flex; align-items: center; gap: 16px; }
+    .logout-btn {
+      background: rgba(255,255,255,.1); color: white; border: none;
+      padding: 7px 14px; border-radius: 8px; font-size: 0.82rem; cursor: pointer;
+      transition: background .2s;
+    }
+    .logout-btn:hover { background: rgba(255,255,255,.2); }
+    #user-email { font-size: 0.82rem; color: rgba(255,255,255,.65); }
+
+    main { padding: 28px 24px; max-width: 1300px; margin: 0 auto; }
+
+    /* TOP BAR */
+    .top-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 24px; flex-wrap: wrap; gap: 12px;
+    }
+    .top-bar h1 { font-size: 1.3rem; color: var(--navy); }
+    .top-bar-actions { display: flex; gap: 10px; align-items: center; }
+
+    .btn { padding: 9px 18px; border-radius: 10px; font-size: 0.88rem; font-weight: 600; cursor: pointer; border: none; transition: all .15s; }
+    .btn-primary { background: var(--navy); color: white; }
+    .btn-primary:hover { background: var(--navy-light); }
+    .btn-gold { background: var(--gold); color: var(--navy); }
+    .btn-gold:hover { background: #d4941f; }
+    .btn-sm { padding: 6px 12px; font-size: 0.78rem; border-radius: 7px; }
+    .btn-ghost { background: white; color: var(--navy); border: 1px solid var(--border); }
+    .btn-ghost:hover { border-color: var(--navy); }
+    .btn-danger { background: #fee2e2; color: #dc2626; }
+    .btn-danger:hover { background: #fecaca; }
+
+    /* STATS */
+    .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 24px; }
+    .stat-card {
+      background: white; border-radius: 14px; padding: 18px 20px;
+      border: 1px solid var(--border);
+    }
+    .stat-label { font-size: 0.78rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+    .stat-value { font-size: 1.8rem; font-weight: 800; color: var(--navy); margin-top: 4px; }
+
+    /* FILTERS */
+    .filters {
+      display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap;
+    }
+    .filter-btn {
+      padding: 7px 16px; border-radius: 99px; font-size: 0.82rem; font-weight: 600;
+      cursor: pointer; border: 1.5px solid var(--border); background: white; color: var(--muted);
+      transition: all .15s;
+    }
+    .filter-btn.active { border-color: var(--navy); background: var(--navy); color: white; }
+    .search-input {
+      padding: 8px 14px; border: 1.5px solid var(--border); border-radius: 10px;
+      font-size: 0.88rem; font-family: inherit; color: var(--text);
+      min-width: 220px;
+    }
+    .search-input:focus { outline: none; border-color: var(--navy); }
+
+    /* TABLE */
+    .table-wrap { background: white; border-radius: 16px; border: 1px solid var(--border); overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left; padding: 12px 16px;
+      font-size: 0.75rem; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .06em;
+      background: #f8faff; border-bottom: 1px solid var(--border);
+    }
+    td { padding: 14px 16px; font-size: 0.88rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f8faff; }
+
+    .status-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 10px; border-radius: 99px;
+      font-size: 0.75rem; font-weight: 700; white-space: nowrap;
+    }
+    .dot { width: 6px; height: 6px; border-radius: 50%; }
+    .s-recebido      { background: #EFF6FF; color: #1d4ed8; }
+    .s-recebido .dot { background: #3b82f6; }
+    .s-em_analise    { background: #FFF9EC; color: #92400e; }
+    .s-em_analise .dot { background: #f59e0b; }
+    .s-proposta_enviada { background: #F0FDF4; color: #166534; }
+    .s-proposta_enviada .dot { background: #22c55e; }
+    .s-aguardando_aceite { background: #FFF9EC; color: #92400e; }
+    .s-aguardando_aceite .dot { background: #f59e0b; }
+    .s-concluido     { background: #ECFDF5; color: #065f46; }
+    .s-concluido .dot { background: #10b981; }
+
+    .actions-cell { display: flex; gap: 6px; flex-wrap: wrap; }
+    .origem-badge {
+      font-size: 0.7rem; padding: 2px 8px; border-radius: 99px;
+      background: #f0f4ff; color: var(--muted);
+    }
+
+    /* MODAL */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.4);
+      z-index: 200; display: flex; align-items: center; justify-content: center;
+      padding: 24px;
+    }
+    .modal {
+      background: white; border-radius: 20px; padding: 36px;
+      max-width: 560px; width: 100%; max-height: 90vh; overflow-y: auto;
+    }
+    .modal h2 { font-size: 1.2rem; color: var(--navy); margin-bottom: 24px; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 0.82rem; font-weight: 600; color: var(--navy); margin-bottom: 5px; }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: 10px 14px; border: 1.5px solid var(--border);
+      border-radius: 10px; font-size: 0.9rem; font-family: inherit; color: var(--text);
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--navy); }
+    .form-group textarea { resize: vertical; min-height: 70px; }
+    .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+
+    /* PROPOSTA MODAL */
+    .proposta-preview {
+      background: #f8faff; border: 1px solid var(--border);
+      border-radius: 12px; padding: 24px; margin: 20px 0;
+      font-size: 0.88rem; line-height: 1.8;
+    }
+    .proposta-preview h3 { font-size: 1.1rem; color: var(--navy); margin-bottom: 16px; text-align: center; }
+    .proposta-preview .linha { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); }
+    .proposta-preview .linha:last-child { border: none; }
+    .proposta-preview strong { color: var(--navy); }
+
+    /* PRINT */
+    @media print {
+      body * { visibility: hidden; }
+      #proposta-print, #proposta-print * { visibility: visible; }
+      #proposta-print { position: fixed; inset: 0; padding: 40px; background: white; }
+    }
+    #proposta-print {
+      display: none;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      max-width: 700px; margin: 0 auto; padding: 48px;
+    }
+    .print-header { text-align: center; margin-bottom: 40px; border-bottom: 2px solid #1E2D4E; padding-bottom: 24px; }
+    .print-logo { font-size: 1.6rem; font-weight: 800; color: #1E2D4E; }
+    .print-title { font-size: 1.2rem; color: #5a6a8a; margin-top: 6px; }
+    .print-table { width: 100%; border-collapse: collapse; margin: 24px 0; }
+    .print-table td { padding: 10px 12px; border: 1px solid #dde3f0; font-size: 0.9rem; }
+    .print-table td:first-child { background: #f8faff; font-weight: 600; color: #1E2D4E; width: 40%; }
+    .print-footer { margin-top: 48px; border-top: 1px solid #dde3f0; padding-top: 20px; font-size: 0.78rem; color: #5a6a8a; }
+    .print-sign { margin-top: 60px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+    .print-sign-line { border-top: 1px solid #1E2D4E; padding-top: 8px; font-size: 0.8rem; color: #5a6a8a; }
+
+    .empty-state { text-align: center; padding: 60px 24px; color: var(--muted); }
+    .empty-state p { margin-top: 8px; font-size: 0.88rem; }
+
+    .toast-bo {
+      position: fixed; bottom: 24px; right: 24px; z-index: 999;
+      background: var(--navy); color: white; padding: 12px 20px;
+      border-radius: 10px; font-size: 0.88rem;
+      box-shadow: 0 8px 24px rgba(0,0,0,.18);
+      transform: translateY(20px); opacity: 0;
+      transition: all .3s; pointer-events: none;
+    }
+    .toast-bo.show { transform: translateY(0); opacity: 1; }
+
+    @media (max-width: 768px) {
+      .form-row-2 { grid-template-columns: 1fr; }
+      table { display: block; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <svg viewBox="0 0 28 28" fill="none">
+        <path d="M14 2L4 7v8c0 5.55 4.27 10.74 10 12 5.73-1.26 10-6.45 10-12V7L14 2z" fill="#1E2D4E"/>
+        <path d="M11 14l2 2 4-4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Just Já
+    </div>
+    <p class="login-sub">Backoffice — acesso restrito</p>
+    <label>E-mail</label>
+    <input type="email" id="login-email" placeholder="seu@email.com" />
+    <label>Senha</label>
+    <input type="password" id="login-senha" placeholder="••••••••" onkeydown="if(event.key==='Enter') doLogin()" />
+    <button class="login-btn" id="login-btn" onclick="doLogin()">Entrar</button>
+    <p class="login-error" id="login-error"></p>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app-screen">
+  <header>
+    <div class="header-logo">
+      <svg viewBox="0 0 28 28" fill="none">
+        <path d="M14 2L4 7v8c0 5.55 4.27 10.74 10 12 5.73-1.26 10-6.45 10-12V7L14 2z" fill="white"/>
+        <path d="M11 14l2 2 4-4" stroke="#1E2D4E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Just Já · Backoffice
+    </div>
+    <div class="header-right">
+      <span id="user-email"></span>
+      <button class="logout-btn" onclick="doLogout()">Sair</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="top-bar">
+      <h1>Casos</h1>
+      <div class="top-bar-actions">
+        <button class="btn btn-ghost" onclick="loadCasos()">↺ Atualizar</button>
+        <button class="btn btn-primary" onclick="openNovoCaso()">+ Novo caso</button>
+      </div>
+    </div>
+
+    <!-- STATS -->
+    <div class="stats-row" id="stats-row">
+      <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value" id="stat-total">—</div></div>
+      <div class="stat-card"><div class="stat-label">Recebidos</div><div class="stat-value" id="stat-recebido">—</div></div>
+      <div class="stat-card"><div class="stat-label">Em análise</div><div class="stat-value" id="stat-analise">—</div></div>
+      <div class="stat-card"><div class="stat-label">Proposta enviada</div><div class="stat-value" id="stat-proposta">—</div></div>
+      <div class="stat-card"><div class="stat-label">Concluídos</div><div class="stat-value" id="stat-concluido">—</div></div>
+    </div>
+
+    <!-- FILTERS -->
+    <div class="filters">
+      <button class="filter-btn active" onclick="setFilter('todos', this)">Todos</button>
+      <button class="filter-btn" onclick="setFilter('recebido', this)">Recebidos</button>
+      <button class="filter-btn" onclick="setFilter('em_analise', this)">Em análise</button>
+      <button class="filter-btn" onclick="setFilter('proposta_enviada', this)">Proposta enviada</button>
+      <button class="filter-btn" onclick="setFilter('aguardando_aceite', this)">Aguardando aceite</button>
+      <button class="filter-btn" onclick="setFilter('concluido', this)">Concluídos</button>
+      <input class="search-input" type="text" id="search-input" placeholder="Buscar por nome ou processo..." oninput="renderTable()" />
+    </div>
+
+    <!-- TABLE -->
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Nome</th>
+            <th>Processo</th>
+            <th>Telefone</th>
+            <th>Tipo</th>
+            <th>Status</th>
+            <th>Entrada</th>
+            <th>Origem</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody id="table-body">
+          <tr><td colspan="8" class="empty-state"><p>Carregando...</p></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<!-- MODAL: NOVO / EDITAR CASO -->
+<div class="modal-overlay" id="modal-caso" style="display:none" onclick="closeIfOverlay(event, 'modal-caso')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h2 id="modal-caso-title">Novo caso</h2>
+    <input type="hidden" id="caso-id" />
+    <div class="form-row-2">
+      <div class="form-group">
+        <label>Nome completo *</label>
+        <input type="text" id="c-nome" placeholder="João da Silva" />
+      </div>
+      <div class="form-group">
+        <label>Telefone / WhatsApp *</label>
+        <input type="text" id="c-telefone" placeholder="(11) 99999-9999" />
+      </div>
+    </div>
+    <div class="form-row-2">
+      <div class="form-group">
+        <label>E-mail</label>
+        <input type="email" id="c-email" placeholder="joao@email.com" />
+      </div>
+      <div class="form-group">
+        <label>Tipo do processo</label>
+        <select id="c-tipo">
+          <option value="">Selecione...</option>
+          <option>Direito Aéreo</option>
+          <option>Consumidor</option>
+          <option>Bancário</option>
+          <option>Outro</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row-2">
+      <div class="form-group">
+        <label>Número do processo</label>
+        <input type="text" id="c-processo" placeholder="0000000-00.0000.0.00.0000" />
+      </div>
+      <div class="form-group">
+        <label>Valor estimado</label>
+        <input type="text" id="c-valor" placeholder="R$ 5.000,00" />
+      </div>
+    </div>
+    <div class="form-row-2">
+      <div class="form-group">
+        <label>Valor da proposta (oferta)</label>
+        <input type="text" id="c-proposta" placeholder="R$ 3.500,00" />
+      </div>
+      <div class="form-group">
+        <label>Status</label>
+        <select id="c-status">
+          <option value="recebido">Recebido</option>
+          <option value="em_analise">Em análise</option>
+          <option value="proposta_enviada">Proposta enviada</option>
+          <option value="aguardando_aceite">Aguardando aceite</option>
+          <option value="concluido">Concluído</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Observação interna</label>
+      <textarea id="c-obs" placeholder="Notas sobre o caso, resultado da consulta DJEN..."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-caso')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveCaso()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: PROPOSTA PDF -->
+<div class="modal-overlay" id="modal-proposta" style="display:none" onclick="closeIfOverlay(event, 'modal-proposta')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:640px">
+    <h2>Gerar proposta</h2>
+    <div class="form-row-2">
+      <div class="form-group">
+        <label>Valor da proposta *</label>
+        <input type="text" id="p-valor-proposta" placeholder="R$ 3.500,00" />
+      </div>
+      <div class="form-group">
+        <label>Prazo de validade</label>
+        <input type="text" id="p-validade" placeholder="7 dias" value="7 dias" />
+      </div>
+    </div>
+    <div class="form-row-2">
+      <div class="form-group">
+        <label>Taxa (% sobre o valor do processo)</label>
+        <input type="text" id="p-taxa" placeholder="30%" />
+      </div>
+      <div class="form-group">
+        <label>Prazo estimado de pagamento</label>
+        <input type="text" id="p-prazo-pag" placeholder="24 horas após assinatura" value="24 horas após assinatura" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Condições adicionais (opcional)</label>
+      <textarea id="p-condicoes" placeholder="Ex: sujeito à confirmação do processo no DataJud..."></textarea>
+    </div>
+    <div class="proposta-preview" id="preview-area"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-proposta')">Cancelar</button>
+      <button class="btn btn-gold" onclick="imprimirProposta()">🖨️ Imprimir / Salvar PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- PRINT AREA (oculto, aparece no print) -->
+<div id="proposta-print"></div>
+
+<div class="toast-bo" id="toast-bo"></div>
+
+<script>
+  const SUPABASE_URL = 'https://tdmfaifablgzdoymnvwb.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_bValT2px0kI91mxAd3P-xg_vrFboPXR';
+  const { createClient } = supabase;
+  const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  let allCasos = [];
+  let currentFilter = 'todos';
+  let propostaCaso = null;
+
+  // ─── AUTH ───────────────────────────────────────────────────────────────────
+  async function doLogin() {
+    const email = document.getElementById('login-email').value.trim();
+    const senha = document.getElementById('login-senha').value;
+    const btn = document.getElementById('login-btn');
+    const err = document.getElementById('login-error');
+    err.textContent = '';
+    btn.disabled = true; btn.textContent = 'Entrando...';
+
+    const { data, error } = await db.auth.signInWithPassword({ email, password: senha });
+
+    if (error) {
+      err.textContent = 'E-mail ou senha incorretos.';
+      btn.disabled = false; btn.textContent = 'Entrar';
+      return;
+    }
+    showApp(data.user);
+  }
+
+  async function doLogout() {
+    await db.auth.signOut();
+    document.getElementById('app-screen').style.display = 'none';
+    document.getElementById('login-screen').style.display = 'flex';
+  }
+
+  function showApp(user) {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app-screen').style.display = 'block';
+    document.getElementById('user-email').textContent = user.email;
+    loadCasos();
+  }
+
+  // Verificar sessão existente ao carregar
+  (async () => {
+    const { data: { session } } = await db.auth.getSession();
+    if (session) showApp(session.user);
+  })();
+
+  // ─── DADOS ──────────────────────────────────────────────────────────────────
+  async function loadCasos() {
+    const { data, error } = await db
+      .from('justja_casos')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) { toast('Erro ao carregar casos.'); return; }
+    allCasos = data || [];
+    updateStats();
+    renderTable();
+  }
+
+  function updateStats() {
+    document.getElementById('stat-total').textContent = allCasos.length;
+    document.getElementById('stat-recebido').textContent = allCasos.filter(c => c.status === 'recebido').length;
+    document.getElementById('stat-analise').textContent = allCasos.filter(c => c.status === 'em_analise').length;
+    document.getElementById('stat-proposta').textContent = allCasos.filter(c => c.status === 'proposta_enviada').length;
+    document.getElementById('stat-concluido').textContent = allCasos.filter(c => c.status === 'concluido').length;
+  }
+
+  function setFilter(f, el) {
+    currentFilter = f;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+    renderTable();
+  }
+
+  function renderTable() {
+    const search = document.getElementById('search-input').value.toLowerCase();
+    let rows = allCasos;
+    if (currentFilter !== 'todos') rows = rows.filter(c => c.status === currentFilter);
+    if (search) rows = rows.filter(c =>
+      (c.nome || '').toLowerCase().includes(search) ||
+      (c.numero_processo || '').toLowerCase().includes(search) ||
+      (c.telefone || '').toLowerCase().includes(search)
+    );
+
+    const STATUS_LABEL = {
+      recebido: 'Recebido',
+      em_analise: 'Em análise',
+      proposta_enviada: 'Proposta enviada',
+      aguardando_aceite: 'Aguardando aceite',
+      concluido: 'Concluído',
+    };
+
+    const tbody = document.getElementById('table-body');
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><p>Nenhum caso encontrado.</p></div></td></tr>';
+      return;
+    }
+
+    const processo = (c) => c.numero_processo || '—';
+    const djenUrl = (n) => `https://esaj.tjsp.jus.br/cpopg/search.do?conversationId=&cbPesquisa=NUMPROC&numeroDigitoAnoUnificado=&foroNumeroUnificado=&dePesquisaNuUnificado=${encodeURIComponent(n)}&dePesquisa=${encodeURIComponent(n)}&uuidCaptcha=`;
+    const datajudUrl = (n) => `https://datajud-wiki.cnj.jus.br/api-publica/consulta?numeroProcesso=${encodeURIComponent(n)}`;
+
+    tbody.innerHTML = rows.map(c => {
+      const num = c.numero_processo || '';
+      const statusCls = 's-' + (c.status || 'recebido');
+      const label = STATUS_LABEL[c.status] || c.status;
+      const data = new Date(c.created_at).toLocaleDateString('pt-BR');
+      const link = `${window.location.origin.replace('/backoffice','')}/minha-solicitacao.html?id=${c.id}`;
+      return `
+        <tr>
+          <td><strong>${c.nome || '—'}</strong></td>
+          <td style="font-size:0.78rem; color:var(--muted)">${num || '—'}</td>
+          <td><a href="https://wa.me/55${(c.telefone||'').replace(/\D/g,'')}" target="_blank" style="color:var(--navy)">${c.telefone || '—'}</a></td>
+          <td>${c.tipo_processo || '—'}</td>
+          <td><span class="status-badge ${statusCls}"><span class="dot"></span>${label}</span></td>
+          <td style="color:var(--muted); font-size:0.82rem">${data}</td>
+          <td><span class="origem-badge">${c.origem === 'formulario_site' ? 'Site' : 'Manual'}</span></td>
+          <td>
+            <div class="actions-cell">
+              ${num ? `<a href="${djenUrl(num)}" target="_blank" class="btn btn-ghost btn-sm">DJEN</a>` : ''}
+              ${num ? `<a href="${datajudUrl(num)}" target="_blank" class="btn btn-ghost btn-sm">DataJud</a>` : ''}
+              <button class="btn btn-ghost btn-sm" onclick="editCaso('${c.id}')">Editar</button>
+              <button class="btn btn-gold btn-sm" onclick="openProposta('${c.id}')">Proposta</button>
+              <button class="btn btn-ghost btn-sm" onclick="copyLink('${link}')" title="Link área do cliente">🔗</button>
+            </div>
+          </td>
+        </tr>`;
+    }).join('');
+  }
+
+  // ─── CRUD ────────────────────────────────────────────────────────────────────
+  function openNovoCaso() {
+    document.getElementById('modal-caso-title').textContent = 'Novo caso';
+    document.getElementById('caso-id').value = '';
+    ['nome','telefone','email','tipo','processo','valor','proposta','obs','status'].forEach(f => {
+      const el = document.getElementById('c-' + f);
+      if (el) el.value = f === 'status' ? 'recebido' : '';
+    });
+    document.getElementById('modal-caso').style.display = 'flex';
+  }
+
+  function editCaso(id) {
+    const c = allCasos.find(x => x.id === id);
+    if (!c) return;
+    document.getElementById('modal-caso-title').textContent = 'Editar caso';
+    document.getElementById('caso-id').value = id;
+    document.getElementById('c-nome').value = c.nome || '';
+    document.getElementById('c-telefone').value = c.telefone || '';
+    document.getElementById('c-email').value = c.email || '';
+    document.getElementById('c-tipo').value = c.tipo_processo || '';
+    document.getElementById('c-processo').value = c.numero_processo || '';
+    document.getElementById('c-valor').value = c.valor_estimado || '';
+    document.getElementById('c-proposta').value = c.valor_proposta || '';
+    document.getElementById('c-status').value = c.status || 'recebido';
+    document.getElementById('c-obs').value = c.observacao || '';
+    document.getElementById('modal-caso').style.display = 'flex';
+  }
+
+  async function saveCaso() {
+    const id = document.getElementById('caso-id').value;
+    const payload = {
+      nome: document.getElementById('c-nome').value.trim(),
+      telefone: document.getElementById('c-telefone').value.trim(),
+      email: document.getElementById('c-email').value.trim() || null,
+      tipo_processo: document.getElementById('c-tipo').value || null,
+      numero_processo: document.getElementById('c-processo').value.trim() || null,
+      valor_estimado: document.getElementById('c-valor').value.trim() || null,
+      valor_proposta: document.getElementById('c-proposta').value.trim() || null,
+      status: document.getElementById('c-status').value,
+      observacao: document.getElementById('c-obs').value.trim() || null,
+    };
+    if (!payload.nome || !payload.telefone) { toast('⚠️ Nome e telefone são obrigatórios.'); return; }
+
+    let error;
+    if (id) {
+      ({ error } = await db.from('justja_casos').update(payload).eq('id', id));
+    } else {
+      payload.origem = 'manual';
+      ({ error } = await db.from('justja_casos').insert([payload]));
+    }
+
+    if (error) { toast('Erro ao salvar: ' + error.message); return; }
+    closeModal('modal-caso');
+    toast('✓ Caso salvo com sucesso!');
+    loadCasos();
+  }
+
+  // ─── PROPOSTA ────────────────────────────────────────────────────────────────
+  function openProposta(id) {
+    propostaCaso = allCasos.find(c => c.id === id);
+    if (!propostaCaso) return;
+    document.getElementById('p-valor-proposta').value = propostaCaso.valor_proposta || '';
+    document.getElementById('p-taxa').value = '';
+    document.getElementById('p-condicoes').value = '';
+    updatePreview();
+    document.getElementById('modal-proposta').style.display = 'flex';
+  }
+
+  function updatePreview() {
+    if (!propostaCaso) return;
+    const c = propostaCaso;
+    const vProposta = document.getElementById('p-valor-proposta').value || '—';
+    const validade = document.getElementById('p-validade').value || '7 dias';
+    const taxa = document.getElementById('p-taxa').value || '—';
+    const prazoPag = document.getElementById('p-prazo-pag').value || '24 horas após assinatura';
+    document.getElementById('preview-area').innerHTML = `
+      <h3>Proposta de Cessão de Crédito</h3>
+      <div class="linha"><span>Cliente:</span><strong>${c.nome}</strong></div>
+      <div class="linha"><span>Processo:</span><strong>${c.numero_processo || '—'}</strong></div>
+      <div class="linha"><span>Tipo:</span><strong>${c.tipo_processo || '—'}</strong></div>
+      <div class="linha"><span>Valor do processo:</span><strong>${c.valor_estimado || '—'}</strong></div>
+      <div class="linha"><span>Valor da proposta:</span><strong>${vProposta}</strong></div>
+      <div class="linha"><span>Taxa:</span><strong>${taxa}</strong></div>
+      <div class="linha"><span>Pagamento:</span><strong>${prazoPag}</strong></div>
+      <div class="linha"><span>Validade:</span><strong>${validade}</strong></div>
+    `;
+  }
+
+  ['p-valor-proposta','p-validade','p-taxa','p-prazo-pag','p-condicoes'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', updatePreview);
+  });
+
+  function imprimirProposta() {
+    if (!propostaCaso) return;
+    const c = propostaCaso;
+    const vProposta = document.getElementById('p-valor-proposta').value || '—';
+    const validade = document.getElementById('p-validade').value || '7 dias';
+    const taxa = document.getElementById('p-taxa').value || '—';
+    const prazoPag = document.getElementById('p-prazo-pag').value || '24 horas após assinatura';
+    const condicoes = document.getElementById('p-condicoes').value;
+    const hoje = new Date().toLocaleDateString('pt-BR');
+
+    document.getElementById('proposta-print').style.display = 'block';
+    document.getElementById('proposta-print').innerHTML = `
+      <div class="print-header">
+        <div class="print-logo">Just Já</div>
+        <div class="print-title">Proposta de Cessão de Crédito</div>
+        <div style="font-size:0.85rem; color:#5a6a8a; margin-top:6px">Emitida em ${hoje} · Válida por ${validade}</div>
+      </div>
+      <table class="print-table">
+        <tr><td>Cliente</td><td>${c.nome}</td></tr>
+        <tr><td>Telefone</td><td>${c.telefone || '—'}</td></tr>
+        <tr><td>Processo</td><td>${c.numero_processo || '—'}</td></tr>
+        <tr><td>Tipo de causa</td><td>${c.tipo_processo || '—'}</td></tr>
+        <tr><td>Valor estimado do processo</td><td>${c.valor_estimado || '—'}</td></tr>
+        <tr><td>Valor da proposta (oferta)</td><td><strong>${vProposta}</strong></td></tr>
+        <tr><td>Taxa aplicada</td><td>${taxa}</td></tr>
+        <tr><td>Prazo de pagamento</td><td>${prazoPag}</td></tr>
+        <tr><td>Validade desta proposta</td><td>${validade}</td></tr>
+        ${condicoes ? `<tr><td>Condições adicionais</td><td>${condicoes}</td></tr>` : ''}
+      </table>
+      <p style="font-size:0.82rem; color:#5a6a8a; line-height:1.7; margin-top:16px">
+        Esta proposta refere-se a uma operação de <strong>cessão de crédito</strong>, prevista no Art. 286 do Código Civil Brasileiro.
+        Não se trata de empréstimo. Ao aceitar, o cedente transfere à Just Já o direito de receber o crédito judicial indicado acima,
+        pelo valor acordado nesta proposta.
+      </p>
+      <div class="print-sign">
+        <div>
+          <div class="print-sign-line">Assinatura do cedente<br><span style="font-size:0.75rem">${c.nome} · CPF: ___.___.___-__</span></div>
+        </div>
+        <div>
+          <div class="print-sign-line">Just Já<br><span style="font-size:0.75rem">Cessionário</span></div>
+        </div>
+      </div>
+      <div class="print-footer">
+        Just Já · Antecipação de créditos cíveis · (11) 94945-4534 · São Paulo, SP<br>
+        Cessão de crédito amparada pelo Art. 286 do Código Civil — Lei 10.406/2002.
+      </div>
+    `;
+    window.print();
+    setTimeout(() => { document.getElementById('proposta-print').style.display = 'none'; }, 500);
+  }
+
+  // ─── UTILS ───────────────────────────────────────────────────────────────────
+  function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+  function closeIfOverlay(e, id) { if (e.target === document.getElementById(id)) closeModal(id); }
+
+  function copyLink(url) {
+    navigator.clipboard.writeText(url).then(() => toast('🔗 Link copiado!'));
+  }
+
+  function toast(msg) {
+    const t = document.getElementById('toast-bo');
+    t.textContent = msg; t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+  }
+</script>
+</body>
+</html>
