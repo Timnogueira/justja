@@ -725,6 +725,7 @@
     const q       = (document.getElementById('d-search')?.value || '').toLowerCase();
 
     const filtered = allLeads.filter(l => {
+      if (!statusF && l.status === 'cancelado') return false; // esconde cancelados por padrão
       if (statusF && l.status !== statusF) return false;
       if (atribF  && l.atribuicao !== atribF) return false;
       if (catF    && l.categoria !== catF) return false;
@@ -770,6 +771,7 @@
             <button class="btn-sm" onclick="abrirDossieFromLead('${l.id}')" title="Gerar dossiê" style="padding:4px 8px">🔍</button>
             ${l.status==='enviado' ? `<button class="btn-sm" onclick="updateLeadStatus('${l.id}','retornou')" style="background:#d1fae5">? Retornou</button>` : ''}
             ${l.status==='retornou' ? `<button class="btn-sm" style="background:#fef3c7" onclick="converterEmCaso('${l.id}')">→ Caso</button>` : ''}
+            ${l.status!=='cancelado' ? `<button class="btn-sm" onclick="cancelarLead('${l.id}')" style="background:#fee2e2;color:#991b1b" title="Já pago ou descartado">✕</button>` : ''}
           </div>
         </td>
         <td style="max-width:150px"><div style="font-size:0.82rem">${esc(l.reu_norm||'—')}</div><div style="font-size:0.7rem;color:var(--muted)">${esc(l.reu_tier||'')}</div></td>
@@ -792,6 +794,14 @@
 
   function dStat(label, val) {
     return `<div class="d-stat"><strong>${val}</strong>${label}</div>`;
+  }
+
+  async function cancelarLead(id) {
+    if (!confirm('Cancelar este lead? (ex: já foi pago)')) return;
+    await db.from('justja_leads').update({ status: 'cancelado' }).eq('id', id);
+    const l = allLeads.find(x => x.id === id);
+    if (l) l.status = 'cancelado';
+    renderLeads();
   }
 
   async function updateLeadStatus(id, status) {
