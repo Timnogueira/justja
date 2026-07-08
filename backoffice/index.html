@@ -663,7 +663,8 @@
     <div class="proposta-preview" id="preview-area"></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-proposta')">Cancelar</button>
-      <button class="btn btn-gold" onclick="imprimirProposta()">🖨️ Imprimir / Salvar PDF</button>
+      <button class="btn btn-primary" onclick="salvarPropostaAtual()">💾 Salvar proposta</button>
+      <button class="btn btn-gold" onclick="imprimirProposta()">🖨️ Salvar + Imprimir PDF</button>
     </div>
   </div>
 </div>
@@ -1604,10 +1605,25 @@
     propostaCaso = allCasos.find(c => c.id === id);
     if (!propostaCaso) return;
     document.getElementById('p-valor-proposta').value = propostaCaso.valor_proposta || '';
-    document.getElementById('p-taxa').value = '';
-    document.getElementById('p-condicoes').value = '';
+    // Repopula com a última proposta salva (registrada na observação)
+    const ult = [...(propostaCaso.observacao || '').matchAll(/Proposta (?:gerada|salva) · Valor: (.*?) · Taxa: (.*?) · Prazo pgto: (.*?) · Validade: ([^·\n]*)(?: · Cond\.: (.*))?$/gm)].pop();
+    document.getElementById('p-taxa').value      = ult ? ult[2].trim() : '';
+    document.getElementById('p-prazo-pag').value = ult ? ult[3].trim() : '24 horas após o aceite';
+    document.getElementById('p-validade').value  = ult ? ult[4].trim() : '7 dias';
+    document.getElementById('p-condicoes').value = ult && ult[5] ? ult[5].trim() : '';
     updatePreview();
     document.getElementById('modal-proposta').style.display = 'flex';
+  }
+
+  function salvarPropostaAtual() {
+    if (!propostaCaso) return;
+    salvarProposta(propostaCaso, {
+      vProposta: document.getElementById('p-valor-proposta').value || '—',
+      validade:  document.getElementById('p-validade').value || '7 dias',
+      taxa:      document.getElementById('p-taxa').value || '—',
+      prazoPag:  document.getElementById('p-prazo-pag').value || '24 horas após o aceite',
+      condicoes: document.getElementById('p-condicoes').value,
+    }, 'salva');
   }
 
   function updatePreview() {
@@ -1719,10 +1735,10 @@
     salvarProposta(c, { vProposta, validade, taxa, prazoPag, condicoes });
   }
 
-  async function salvarProposta(c, p) {
+  async function salvarProposta(c, p, verbo = 'gerada') {
     if (!c.id || String(c.id).startsWith('lead_') || String(c.id).startsWith('test_')) return; // só casos reais
     const ts = new Date().toLocaleString('pt-BR');
-    const detalhe = `[${ts}] Proposta gerada · Valor: ${p.vProposta} · Taxa: ${p.taxa} · Prazo pgto: ${p.prazoPag} · Validade: ${p.validade}` +
+    const detalhe = `[${ts}] Proposta ${verbo} · Valor: ${p.vProposta} · Taxa: ${p.taxa} · Prazo pgto: ${p.prazoPag} · Validade: ${p.validade}` +
       (p.condicoes ? ` · Cond.: ${p.condicoes}` : '');
     const obsAtual = c.observacao || '';
     const payload = {
