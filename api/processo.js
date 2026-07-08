@@ -54,10 +54,16 @@ module.exports = async function handler(req, res) {
         'Authorization': `APIKey ${DATAJUD_KEY}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ size: 1, query: { term: { numeroProcesso: digits } } })
+      // igual ao planob: match + sort por snapshot mais novo + _source enxuto (payload menor = resposta mais rápida)
+      body: JSON.stringify({
+        size: 10,
+        query: { match: { numeroProcesso: digits } },
+        sort: [{ '@timestamp': 'desc' }],
+        _source: ['numeroProcesso', 'classe', 'orgaoJulgador', 'dataAjuizamento', 'movimentos', 'assuntos', 'valor']
+      })
     },
-    22000
-  ), 2);
+    50000
+  ), 1);
 
   // apenas=datajud: browser já tem o DJEN — responder assim que o DataJud voltar (sem esperar DJEN)
   const pDjen = apenas === 'datajud' ? null : comRetry(() => fetchComTimeout(
@@ -75,7 +81,14 @@ module.exports = async function handler(req, res) {
   const [djRes, djenRes] = await Promise.allSettled([pDatajud, pDjen ?? Promise.resolve(null)]);
 
   if (djRes.status === 'fulfilled' && djRes.value.ok) {
-    try { result.datajud = await djRes.value.json(); } catch { result.erroDatajud = 'parse error'; }
+    try {
+      result.datajud = await djRes.value.json();
+      // DataJud guarda vários snapshots do mesmo processo — deixar o mais completo (mais movimentos) em hits[0]
+      const hits = result.datajud?.hits?.hits;
+      if (Array.isArray(hits) && hits.length > 1) {
+        hits.sort((a, b) => (b._source?.movimentos?.length || 0) - (a._source?.movimentos?.length || 0));
+      }
+    } catch { result.erroDatajud = 'parse error'; }
   } else if (djRes.status === 'rejected') {
     result.erroDatajud = djRes.reason?.message || 'erro';
   } else {
