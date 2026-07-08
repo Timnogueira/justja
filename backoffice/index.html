@@ -504,7 +504,7 @@
         <table>
           <thead>
             <tr>
-              <th>Cliente · Ações</th><th>Réu</th><th>Valor</th><th>Cat.</th><th>Pgto q90</th>
+              <th>Cliente · Ações</th><th>Réu</th><th>Valor</th><th>Cat.</th><th>Sentença</th><th>Pgto q90</th>
               <th>Atribuição</th><th>Status</th><th>Observação</th><th>Mensagem</th>
             </tr>
           </thead>
@@ -830,6 +830,7 @@
         <td style="max-width:150px"><div style="font-size:0.82rem">${esc(l.reu_norm||'—')}</div><div style="font-size:0.7rem;color:var(--muted)">${esc(l.reu_tier||'')}</div></td>
         <td style="font-weight:600;white-space:nowrap">${esc(valor)}</td>
         <td><span style="font-weight:700;color:var(--navy)">${esc(l.categoria||'—')}</span></td>
+        <td style="white-space:nowrap;font-size:0.8rem">${l.data_sentenca ? new Date(l.data_sentenca + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
         <td style="white-space:nowrap;font-size:0.8rem">${pgtoQ90}</td>
         <td>
           <select class="atrib-badge ${atribCls}" style="border:none;padding:3px 6px;border-radius:10px;font-size:0.72rem;font-weight:700;cursor:pointer"
