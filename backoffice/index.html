@@ -313,6 +313,7 @@
     }
     #proposta-print {
       display: none;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       max-width: 700px; margin: 0 auto; padding: 48px;
     }
@@ -321,6 +322,22 @@
     .print-logo svg { width: 34px; height: 34px; }
     .print-title { font-size: 1.12rem; color: #1E2D4E; margin-top: 12px; font-weight: 600; }
     .print-subtitle { font-size: 0.82rem; color: #8a97b3; margin-top: 4px; }
+    .print-hook { text-align: center; margin: 4px 0 22px; padding: 20px 24px; border-radius: 14px;
+      background: linear-gradient(135deg, #1E2D4E 0%, #2a3f6b 100%); color: #fff; }
+    .print-hook-title { font-size: 1.28rem; font-weight: 800; letter-spacing: -.01em; }
+    .print-hook-sub { font-size: 0.9rem; color: rgba(255,255,255,.82); margin-top: 8px; line-height: 1.5; }
+    .print-green { display: flex; gap: 12px; align-items: flex-start; margin-top: 20px;
+      background: #f0fdf4; border: 1px solid #bbf7d0; border-left: 4px solid #16a34a; border-radius: 10px;
+      padding: 16px 18px; font-size: 0.85rem; color: #1E2D4E; line-height: 1.6; }
+    .print-green svg { width: 22px; height: 22px; flex-shrink: 0; margin-top: 1px; }
+    .print-page2 { page-break-before: always; break-before: page; padding-top: 20px; }
+    .print-steps { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .print-step { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px;
+      background: #f8faff; border: 1px solid #dde3f0; border-radius: 12px; font-size: 0.85rem; line-height: 1.5; color: #5a6a8a; }
+    .print-step strong { color: #1E2D4E; }
+    .print-step-num { flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%;
+      background: #1E2D4E; color: #fff; font-weight: 800; font-size: 0.9rem;
+      display: flex; align-items: center; justify-content: center; }
     .print-table { width: 100%; border-collapse: collapse; margin: 24px 0; }
     .print-table td { padding: 10px 12px; border: 1px solid #dde3f0; font-size: 0.9rem; }
     .print-table td:first-child { background: #f8faff; font-weight: 600; color: #1E2D4E; width: 40%; }
@@ -1639,6 +1656,12 @@
         <div class="print-title">Proposta Comercial de Antecipação de Crédito</div>
         <div class="print-subtitle">Emitida em ${hoje} · Válida por ${validade}</div>
       </div>
+
+      <div class="print-hook">
+        <div class="print-hook-title">Por que esperar anos se você pode receber agora?</div>
+        <div class="print-hook-sub">Antecipe o valor do seu processo e tenha o dinheiro na conta em até 24 horas — sem espera, sem burocracia.</div>
+      </div>
+
       <table class="print-table">
         <tr><td>Cliente</td><td>${esc(c.nome)}</td></tr>
         <tr><td>Telefone</td><td>${esc(c.telefone) || '—'}</td></tr>
@@ -1658,9 +1681,33 @@
         A cessão somente se concretiza com a assinatura do <strong>Termo de Cessão de Crédito</strong> e o cumprimento das etapas de
         verificação documental e habilitação processual. O pagamento fica condicionado à conclusão dessas etapas.
       </p>
-      <div style="margin-top:28px; background:#f8faff; border:1px solid #dde3f0; border-radius:10px; padding:16px 18px; font-size:0.85rem; color:#1E2D4E; line-height:1.6">
+      <div class="print-green">
+        <svg viewBox="0 0 24 24" fill="none"><path stroke="#16a34a" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <div>
+          <strong style="color:#15803d">Você não paga nada para a Just Já.</strong>
+          Não há taxa de cadastro, cobrança antecipada ou custo oculto. Você recebe o valor combinado, já líquido, direto na sua conta.
+          Nossa remuneração está no desconto acordado nesta proposta — tudo transparente antes de qualquer assinatura.
+        </div>
+      </div>
+
+      <div style="margin-top:18px; background:#f8faff; border:1px solid #dde3f0; border-radius:10px; padding:14px 18px; font-size:0.84rem; color:#1E2D4E; line-height:1.6">
         Após o aceite desta proposta, nossa equipe entrará em contato para orientar sobre os próximos passos.
       </div>
+
+      <!-- PÁGINA 2 -->
+      <div class="print-page2">
+        <div class="print-title" style="text-align:center; margin-bottom:4px">Simples. Rápido. Transparente.</div>
+        <div class="print-subtitle" style="text-align:center; margin-bottom:24px">Do cadastro ao PIX, você não precisa entender de direito — só nos contar o que tem.</div>
+        <div class="print-steps">
+          <div class="print-step"><div class="print-step-num">1</div><div><strong>Envie seu processo</strong><br>Informe o número do processo, seu nome e contato. Menos de 2 minutos.</div></div>
+          <div class="print-step"><div class="print-step-num">2</div><div><strong>Analisamos tudo por você</strong><br>Consultamos o histórico nos sistemas oficiais do tribunal e confirmamos valores e prazo.</div></div>
+          <div class="print-step"><div class="print-step-num">3</div><div><strong>Você recebe a proposta</strong><br>Enviamos o valor que pagaremos à vista. Sem letras miúdas. Você decide se aceita.</div></div>
+          <div class="print-step"><div class="print-step-num">4</div><div><strong>Assine o Termo de Cessão</strong><br>Com o aceite, enviamos o Contrato de Cessão para assinatura digital — online, em minutos.</div></div>
+          <div class="print-step"><div class="print-step-num">5</div><div><strong>A Just Já registra tudo no tribunal</strong><br>Cuidamos de toda a burocracia junto ao tribunal. Você não precisa fazer nada.</div></div>
+          <div class="print-step"><div class="print-step-num">6</div><div><strong>PIX na sua conta em até 24 horas</strong><br>Assim que o tribunal confirma o registro, o pagamento é liberado direto na sua conta.</div></div>
+        </div>
+      </div>
+
       <div class="print-footer">
         Just Já · Antecipação de créditos cíveis · (11) 94945-4534 · São Paulo, SP<br>
         Cessão de crédito amparada pelo Art. 286 do Código Civil — Lei 10.406/2002.
