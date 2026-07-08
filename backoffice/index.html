@@ -138,6 +138,10 @@
     .s-proposta_enviada .dot { background: #22c55e; }
     .s-aguardando_aceite { background: #FFF9EC; color: #92400e; }
     .s-aguardando_aceite .dot { background: #f59e0b; }
+    .s-assinatura    { background: #F5F3FF; color: #5b21b6; }
+    .s-assinatura .dot { background: #8b5cf6; }
+    .s-registro_tribunal { background: #EEF2FF; color: #3730a3; }
+    .s-registro_tribunal .dot { background: #6366f1; }
     .s-concluido     { background: #ECFDF5; color: #065f46; }
     .s-concluido .dot { background: #10b981; }
 
@@ -417,6 +421,8 @@
       <button class="filter-btn" id="fb-em_analise" onclick="setFilter('em_analise', this)">Em análise</button>
       <button class="filter-btn" id="fb-proposta_enviada" onclick="setFilter('proposta_enviada', this)">Proposta enviada</button>
       <button class="filter-btn" id="fb-aguardando_aceite" onclick="setFilter('aguardando_aceite', this)">Ag. aceite</button>
+      <button class="filter-btn" id="fb-assinatura" onclick="setFilter('assinatura', this)">Assinatura</button>
+      <button class="filter-btn" id="fb-registro_tribunal" onclick="setFilter('registro_tribunal', this)">Registro</button>
       <button class="filter-btn" id="fb-concluido" onclick="setFilter('concluido', this)">Concluídos</button>
       <input class="search-input" type="text" id="search-input" placeholder="Buscar nome, processo, telefone..." oninput="renderTable()" />
     </div>
@@ -505,6 +511,8 @@
       <div class="stage-step" data-s="em_analise" onclick="setStepStatus('em_analise')">Em análise</div>
       <div class="stage-step" data-s="proposta_enviada" onclick="setStepStatus('proposta_enviada')">Proposta</div>
       <div class="stage-step" data-s="aguardando_aceite" onclick="setStepStatus('aguardando_aceite')">Ag. aceite</div>
+      <div class="stage-step" data-s="assinatura" onclick="setStepStatus('assinatura')">Assinatura</div>
+      <div class="stage-step" data-s="registro_tribunal" onclick="setStepStatus('registro_tribunal')">Registro</div>
       <div class="stage-step" data-s="concluido" onclick="setStepStatus('concluido')">Concluído</div>
     </div>
 
@@ -556,6 +564,8 @@
           <option value="em_analise">Em análise</option>
           <option value="proposta_enviada">Proposta enviada</option>
           <option value="aguardando_aceite">Aguardando aceite</option>
+          <option value="assinatura">Assinatura do Termo</option>
+          <option value="registro_tribunal">Registro no tribunal</option>
           <option value="concluido">Concluído</option>
         </select>
       </div>
@@ -662,9 +672,11 @@
     em_analise: 'Em análise',
     proposta_enviada: 'Proposta enviada',
     aguardando_aceite: 'Aguardando aceite',
+    assinatura: 'Assinatura do Termo',
+    registro_tribunal: 'Registro no tribunal',
     concluido: 'Concluído',
   };
-  const STATUS_ORDER = ['recebido','em_analise','proposta_enviada','aguardando_aceite','concluido'];
+  const STATUS_ORDER = ['recebido','em_analise','proposta_enviada','aguardando_aceite','assinatura','registro_tribunal','concluido'];
 
   // ─── AUTH ───────────────────────────────────────────────────────────────────
   async function doLogin() {

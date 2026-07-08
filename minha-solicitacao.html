@@ -207,21 +207,25 @@
 
   const STATUS_CONFIG = {
     recebido:   { label: 'Recebido', cls: 'status-recebido', next: 'Nossa equipe está revisando sua solicitação. Entraremos em contato em até 24 horas.' },
-    em_analise: { label: 'Em análise', cls: 'status-analise', next: 'Estamos consultando os dados do seu processo no DJEN e DataJud. Em breve temos novidades.' },
+    em_analise: { label: 'Em análise', cls: 'status-analise', next: 'Estamos consultando os dados do seu processo nos sistemas oficiais do tribunal. Em breve temos novidades.' },
     proposta_enviada: { label: 'Proposta enviada', cls: 'status-proposta', next: 'Você deve ter recebido nossa proposta por WhatsApp. Dúvidas? Fale conosco.' },
-    aguardando_aceite: { label: 'Aguardando aceite', cls: 'status-aguardando', next: 'Aguardamos sua confirmação para dar andamento à cessão e ao pagamento.' },
-    concluido: { label: 'Concluído', cls: 'status-concluido', next: 'Operação encerrada. Obrigado por confiar na Just Já!' },
+    aguardando_aceite: { label: 'Aguardando aceite', cls: 'status-aguardando', next: 'Aguardamos sua confirmação para preparar o Termo de Cessão.' },
+    assinatura: { label: 'Assinatura do Termo', cls: 'status-aguardando', next: 'Enviamos o Termo de Cessão para sua assinatura digital. Assim que assinar, seguimos para o registro no tribunal.' },
+    registro_tribunal: { label: 'Registro no tribunal', cls: 'status-proposta', next: 'Seu Termo de Cessão assinado está sendo registrado no processo. Confirmado o registro, o PIX é enviado em até 24 horas.' },
+    concluido: { label: 'Concluído', cls: 'status-concluido', next: 'PIX enviado! Operação encerrada. Obrigado por confiar na Just Já!' },
   };
 
   const STEPS = [
     { key: 'recebido', label: 'Solicitação recebida', sub: 'Cadastro registrado com sucesso' },
-    { key: 'em_analise', label: 'Análise do processo', sub: 'Verificação no DJEN e DataJud' },
+    { key: 'em_analise', label: 'Análise do processo', sub: 'Verificação nos sistemas do tribunal' },
     { key: 'proposta_enviada', label: 'Proposta enviada', sub: 'Condições enviadas por WhatsApp' },
     { key: 'aguardando_aceite', label: 'Aguardando aceite', sub: 'Confirmação do cliente' },
-    { key: 'concluido', label: 'Concluído', sub: 'PIX enviado' },
+    { key: 'assinatura', label: 'Assinatura do Termo de Cessão', sub: 'Assinatura digital do contrato' },
+    { key: 'registro_tribunal', label: 'Registro no tribunal', sub: 'Contrato anexado ao processo' },
+    { key: 'concluido', label: 'Concluído', sub: 'PIX enviado em até 24h após o registro' },
   ];
 
-  const ORDER = ['recebido','em_analise','proposta_enviada','aguardando_aceite','concluido'];
+  const ORDER = ['recebido','em_analise','proposta_enviada','aguardando_aceite','assinatura','registro_tribunal','concluido'];
 
   function renderTimeline(currentStatus) {
     const idx = ORDER.indexOf(currentStatus);
