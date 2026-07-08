@@ -145,6 +145,13 @@
     .s-concluido     { background: #ECFDF5; color: #065f46; }
     .s-concluido .dot { background: #10b981; }
 
+    .th-sort { cursor: pointer; user-select: none; }
+    .th-sort:hover { color: var(--navy); }
+    .sort-arrow { font-size: 0.7rem; opacity: .4; }
+    .sort-arrow.asc::after { content: '▲'; opacity: 1; color: var(--navy); }
+    .sort-arrow.desc::after { content: '▼'; opacity: 1; color: var(--navy); }
+    .sort-arrow:not(.asc):not(.desc)::after { content: '⇅'; }
+
     .actions-cell { display: flex; gap: 5px; flex-wrap: wrap; }
     .origem-badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 99px; background: #f0f4ff; color: var(--muted); }
 
@@ -504,8 +511,15 @@
         <table>
           <thead>
             <tr>
-              <th>Cliente · Ações</th><th>Réu</th><th>Valor</th><th>Cat.</th><th>Sentença</th><th>Pgto q90</th>
-              <th>Atribuição</th><th>Status</th><th>Observação</th><th>Mensagem</th>
+              <th class="th-sort" onclick="sortLeads('autor_nome')">Cliente · Ações <span class="sort-arrow" data-col="autor_nome"></span></th>
+              <th class="th-sort" onclick="sortLeads('reu_norm')">Réu <span class="sort-arrow" data-col="reu_norm"></span></th>
+              <th class="th-sort" onclick="sortLeads('valor_reais')">Valor <span class="sort-arrow" data-col="valor_reais"></span></th>
+              <th class="th-sort" onclick="sortLeads('categoria')">Cat. <span class="sort-arrow" data-col="categoria"></span></th>
+              <th class="th-sort" onclick="sortLeads('data_sentenca')">Sentença <span class="sort-arrow" data-col="data_sentenca"></span></th>
+              <th class="th-sort" onclick="sortLeads('data_pgto_q90')">Pgto q90 <span class="sort-arrow" data-col="data_pgto_q90"></span></th>
+              <th class="th-sort" onclick="sortLeads('atribuicao')">Atribuição <span class="sort-arrow" data-col="atribuicao"></span></th>
+              <th class="th-sort" onclick="sortLeads('status')">Status <span class="sort-arrow" data-col="status"></span></th>
+              <th>Observação</th><th>Mensagem</th>
             </tr>
           </thead>
           <tbody id="leads-body"><tr><td colspan="11" class="empty-state"><p>Importe um Excel ou aguarde...</p></td></tr></tbody>
@@ -764,6 +778,20 @@
 
   // ─── DISPAROS ────────────────────────────────────────────────────────────────
   let allLeads = [];
+  let leadSort = { col: null, dir: 'asc' };
+
+  function sortLeads(col) {
+    if (leadSort.col === col) {
+      leadSort.dir = leadSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      leadSort = { col, dir: 'asc' };
+    }
+    document.querySelectorAll('.sort-arrow').forEach(el => {
+      el.classList.remove('asc', 'desc');
+      if (el.dataset.col === col) el.classList.add(leadSort.dir);
+    });
+    renderLeads();
+  }
 
   async function loadLeads() {
     const { data } = await db.from('justja_leads').select('*').order('created_at', { ascending: false });
@@ -785,6 +813,17 @@
       if (q && !`${l.autor_nome} ${l.reu_norm} ${l.numero_processo}`.toLowerCase().includes(q)) return false;
       return true;
     });
+
+    if (leadSort.col) {
+      const numCols = new Set(['valor_reais']);
+      filtered.sort((a, b) => {
+        let va = a[leadSort.col], vb = b[leadSort.col];
+        if (numCols.has(leadSort.col)) { va = Number(va) || 0; vb = Number(vb) || 0; }
+        else { va = va || ''; vb = vb || ''; }
+        const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+        return leadSort.dir === 'asc' ? cmp : -cmp;
+      });
+    }
 
     // Stats
     const total    = allLeads.length;
