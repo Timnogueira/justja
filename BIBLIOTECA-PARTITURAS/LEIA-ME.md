@@ -1,6 +1,6 @@
 # Biblioteca de Partituras para Piano
 
-**130 peças · 395 páginas · 10 volumes encadernados**
+**133 peças · 411 páginas · 11 volumes encadernados**
 
 Todas as peças foram **gravadas do zero** a partir de fontes digitais de domínio público, com uma única folha de estilo. Por isso têm todas o mesmo aspecto: A4, pauta de 20 pt, margens de 15 mm e bastante espaço entre os sistemas.
 
@@ -19,6 +19,7 @@ Cada coleção tem os PDFs avulsos (um por peça, para pôr na estante) e um `_V
 | **Estudos, op. 10** | 12 | 65 | `_VOLUME-COMPLETO.pdf` (65p) |
 | **Estudos, op. 25** | 12 | 69 | `_VOLUME-COMPLETO.pdf` (69p) |
 | **Sonata “Ao Luar”, op. 27 n.º 2 — completa** | 3 | 26 | `_VOLUME-COMPLETO.pdf` (26p) |
+| **Noturno op. 9 n.º 2 e Polonaises op. 40** | 3 | 16 | `_VOLUME-COMPLETO.pdf` (16p) |
 | **Leitura à primeira vista** | 6 | 13 | `_VOLUME-COMPLETO.pdf` (13p) |
 
 ### Invenções a 2 vozes, BWV 772–786
@@ -198,6 +199,15 @@ Cada coleção tem os PDFs avulsos (um por peça, para pôr na estante) e um `_V
 | 1 | I. Adagio sostenuto | Sonata quasi una Fantasia, op. 27 n.º 2 | 6 | `01-I-Adagio-sostenuto.pdf` |
 | 2 | II. Allegretto | Sonata quasi una Fantasia, op. 27 n.º 2 | 2 | `02-II-Allegretto.pdf` |
 | 3 | III. Presto agitato | Sonata quasi una Fantasia, op. 27 n.º 2 | 18 | `03-III-Presto-agitato.pdf` |
+
+### Noturno op. 9 n.º 2 e Polonaises op. 40
+*O noturno em mi bemol e as duas polonaises do op. 40, nas primeiras edições francesas.*
+
+| n.º | Peça | | Pág. | Arquivo |
+|--:|---|---|--:|---|
+| 1 | Noturno op. 9 n.º 2 | Mi bemol maior | 4 | `01-Noturno-op-9-no-2.pdf` |
+| 2 | Polonaise op. 40 n.º 1 | Lá maior (“Militar”) | 6 | `02-Polonaise-op-40-no-1.pdf` |
+| 3 | Polonaise op. 40 n.º 2 | Dó menor | 6 | `03-Polonaise-op-40-no-2.pdf` |
 
 ### Leitura à primeira vista
 *Seis peças curtas e pouco tocadas, de estilos diferentes, para ler sem conhecer.*
